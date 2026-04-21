@@ -419,14 +419,21 @@ class WhatsAppInboundRequest(BaseModel):
 
 def _check_internal_token(authorization: str | None) -> bool:
     """Validate Bearer token for internal endpoints."""
-    if not ASSISTANT_CORE_API_TOKEN:
+    expected = (ASSISTANT_CORE_API_TOKEN or "").strip()
+    provided = (authorization or "").strip()
+
+    if not expected:
         return False
-    if not authorization:
+    if not provided:
         return False
-    parts = authorization.split(" ", 1)
+
+    logger.debug("AUTH DEBUG: provided_present=%s expected_present=%s provided_len=%d expected_len=%d startswith_bearer=%s",
+                 bool(provided), bool(expected), len(provided), len(expected), provided.startswith("Bearer "))
+
+    parts = provided.split(" ", 1)
     if len(parts) != 2 or parts[0].lower() != "bearer":
         return False
-    return parts[1] == ASSISTANT_CORE_API_TOKEN
+    return parts[1].strip() == expected
 
 
 @app.post("/internal/whatsapp/inbound")
