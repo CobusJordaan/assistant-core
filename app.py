@@ -20,7 +20,7 @@ from tools import register_tool, list_tools, execute_tool
 from tool_intent import detect_intent
 from billing_client import billing_client
 from billing_format import format_billing_result, format_client_lookup
-from billing_session import set_client, get_client, set_last_lookup, get_last_lookup
+from billing_session import set_client, get_client, clear_client, set_last_lookup, get_last_lookup
 
 # ---------------------------------------------------------------------------
 # Config
@@ -222,6 +222,21 @@ async def _handle_message(message: str, session_id: str = "default", model: str 
     tool_name = intent["tool"]
     args = intent.get("args", {})
 
+    # --- Billing current client ---
+    if tool_name == "billing_current_client":
+        ctx = get_client(session_id)
+        if ctx:
+            return f"Currently selected: client {ctx['client_id']} — {ctx['client_name']}.", tool_name
+        return "No client selected yet. Please run 'find client <name>' first.", tool_name
+
+    # --- Billing clear client ---
+    if tool_name == "billing_clear_client":
+        ctx = get_client(session_id)
+        if ctx:
+            clear_client(session_id)
+            return f"Cleared selected client ({ctx['client_id']} — {ctx['client_name']}).", tool_name
+        return "No client was selected.", tool_name
+
     # --- Billing select client (from last lookup, no API call) ---
     if tool_name == "billing_select_client":
         client_id = args["client_id"]
@@ -240,7 +255,7 @@ async def _handle_message(message: str, session_id: str = "default", model: str 
     # --- Billing client lookup ---
     if tool_name == "billing_client_lookup":
         result = await execute_tool(tool_name, args)
-        text, clients = format_client_lookup(result)
+        text, clients = format_client_lookup(result, query=args.get("query", ""))
         # Store results for "use <id>" follow-up
         set_last_lookup(session_id, clients)
         # Auto-select if exactly 1 match

@@ -19,35 +19,69 @@ def format_billing_result(tool_name: str, result: dict) -> str | None:
     return None
 
 
-def format_client_lookup(result: dict) -> tuple[str, list[dict]]:
+SHORTLIST_MAX = 5
+
+
+def format_client_lookup(result: dict, query: str = "") -> tuple[str, list[dict]]:
     """Format client lookup results.
 
     Returns (formatted_text, clients_list).
-    clients_list is the raw client dicts for session selection logic.
+    clients_list is the full ranked client list for session selection logic.
     """
     data = _extract_data(result)
     if isinstance(data, str):
         return data, []
 
     clients = data.get("clients", [])
-    count = data.get("count", len(clients))
+    total = data.get("count", len(clients))
 
-    if count == 0:
+    if total == 0:
         return "No matching clients found.", []
 
-    if count == 1:
-        c = clients[0]
-        text = _format_single_client(c)
+    # Rank results by relevance to query
+    if query:
+        clients = _rank_clients(clients, query)
+
+    if len(clients) == 1:
+        text = _format_single_client(clients[0])
         return text, clients
 
-    # Multiple matches — numbered shortlist
-    lines = [f"Found {count} matching clients:"]
-    for i, c in enumerate(clients, 1):
+    # Multiple matches — capped numbered shortlist
+    shown = clients[:SHORTLIST_MAX]
+    lines = [f"Found {total} matching client{'s' if total != 1 else ''}:"]
+    for i, c in enumerate(shown, 1):
         lines.append(f"  {i}. {_format_client_line(c)}")
+    if total > SHORTLIST_MAX:
+        lines.append(f"  ... and {total - SHORTLIST_MAX} more.")
     lines.append("")
     lines.append('Type "use <client_id>" to select a client.')
 
     return "\n".join(lines), clients
+
+
+def _rank_clients(clients: list[dict], query: str) -> list[dict]:
+    """Rank clients by match quality against the search query."""
+    q = query.lower().strip()
+
+    def score(c: dict) -> tuple[int, str]:
+        name = (c.get("fullname") or "").lower()
+        # 0 = exact fullname match
+        if name == q:
+            return (0, name)
+        # 1 = fullname starts with query
+        if name.startswith(q):
+            return (1, name)
+        # 2 = first name exact match (first word)
+        first = name.split()[0] if name else ""
+        if first == q:
+            return (2, name)
+        # 3 = first name starts with query
+        if first.startswith(q):
+            return (3, name)
+        # 4 = everything else
+        return (4, name)
+
+    return sorted(clients, key=score)
 
 
 def _extract_data(result: dict) -> dict | str:

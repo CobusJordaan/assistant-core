@@ -24,6 +24,14 @@ def detect_billing_intent(message: str) -> dict | None:
     text = message.strip()
     lower = text.lower()
 
+    # current client / who is selected
+    if lower in ("current client", "who is selected", "selected client"):
+        return {"tool": "billing_current_client", "args": {}}
+
+    # clear client / forget client / deselect
+    if lower in ("clear client", "forget client", "forget selected client", "deselect client", "deselect"):
+        return {"tool": "billing_clear_client", "args": {}}
+
     # use <client_id> — select a client
     m = re.match(r"^use\s+(\d+)$", lower)
     if m:
