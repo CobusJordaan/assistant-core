@@ -6,10 +6,8 @@ import time
 import logging
 from contextlib import asynccontextmanager
 
-import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import Any
 
@@ -25,12 +23,7 @@ from billing_client import billing_client
 # Config
 # ---------------------------------------------------------------------------
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "llama3.2")
-SYSTEM_PROMPT = os.getenv(
-    "SYSTEM_PROMPT",
-    "You are a helpful AI assistant. Answer concisely and accurately.",
-)
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "assistant-core")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "memory.db")
 
 logger = logging.getLogger("assistant-core")
@@ -143,23 +136,51 @@ class OllamaGenerateRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Ollama HTTP helper
+# Shim helpers
 # ---------------------------------------------------------------------------
 
-async def _ollama_post(path: str, body: dict) -> dict:
-    """POST to Ollama and return JSON response."""
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=300, write=10, pool=10)) as client:
-        resp = await client.post(f"{OLLAMA_URL}{path}", json=body)
-        resp.raise_for_status()
-        return resp.json()
+MODEL_NAME = "assistant-core"
 
 
-async def _ollama_get(path: str) -> dict:
-    """GET from Ollama and return JSON response."""
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(f"{OLLAMA_URL}{path}")
-        resp.raise_for_status()
-        return resp.json()
+def _ollama_chat_response(content: str, model: str | None = None) -> dict:
+    """Build an Ollama-compatible /api/chat response."""
+    return {
+        "model": model or MODEL_NAME,
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+        "message": {"role": "assistant", "content": content},
+        "done": True,
+        "total_duration": 0,
+        "load_duration": 0,
+        "prompt_eval_count": 0,
+        "eval_count": 0,
+    }
+
+
+def _ollama_generate_response(content: str, model: str | None = None) -> dict:
+    """Build an Ollama-compatible /api/generate response."""
+    return {
+        "model": model or MODEL_NAME,
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+        "response": content,
+        "done": True,
+        "total_duration": 0,
+        "load_duration": 0,
+        "prompt_eval_count": 0,
+        "eval_count": 0,
+    }
+
+
+async def _handle_message(message: str, model: str | None = None) -> tuple[str, str | None]:
+    """Process a message through tool detection.
+
+    Returns (response_text, tool_name_or_none).
+    """
+    intent = detect_intent(message)
+    if intent:
+        result = await execute_tool(intent["tool"], intent.get("args"))
+        return json.dumps(result, indent=2, default=str), intent["tool"]
+
+    return f"Received: {message}", None
 
 
 # ---------------------------------------------------------------------------
@@ -173,7 +194,6 @@ def health():
         "status": "ok",
         "version": "1.0.0",
         "tools_loaded": tool_count,
-        "ollama_url": OLLAMA_URL,
         "default_model": DEFAULT_MODEL,
         "billing_configured": billing_client.configured,
     }
@@ -181,41 +201,15 @@ def health():
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    """High-level chat endpoint with tool detection.
-
-    Flow:
-    1. Check for tool intent in the message
-    2. If tool detected, execute it and return result
-    3. Otherwise, forward to Ollama and return response
-    """
+    """High-level chat endpoint with tool detection."""
     message = req.message.strip()
     model = req.model or DEFAULT_MODEL
 
-    # Check for tool intent
-    intent = detect_intent(message)
-    if intent:
-        result = await execute_tool(intent["tool"], intent.get("args"))
-        return {"response": result, "tool_used": intent["tool"], "model": model}
-
-    # Forward to Ollama
-    try:
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": message},
-        ]
-        result = await _ollama_post("/api/chat", {
-            "model": model,
-            "messages": messages,
-            "stream": False,
-        })
-        assistant_content = result.get("message", {}).get("content", "")
-        return {"response": assistant_content, "model": model}
-    except httpx.HTTPError as e:
-        logger.error(f"/chat Ollama error: {e}")
-        return JSONResponse(
-            status_code=502,
-            content={"error": f"Ollama unavailable: {e}"},
-        )
+    response_text, tool_used = await _handle_message(message, model)
+    result = {"response": response_text, "model": model}
+    if tool_used:
+        result["tool_used"] = tool_used
+    return result
 
 
 @app.post("/tool")
@@ -232,60 +226,68 @@ def tools_list():
 
 
 # ---------------------------------------------------------------------------
-# Ollama-compatible shim routes
+# Ollama-compatible shim routes (handled directly, no Ollama dependency)
 # ---------------------------------------------------------------------------
 
 @app.get("/api/tags")
-async def api_tags():
-    """Ollama-compatible model list."""
-    try:
-        return await _ollama_get("/api/tags")
-    except httpx.HTTPError as e:
-        logger.error(f"/api/tags Ollama error: {e}")
-        return JSONResponse(status_code=502, content={"error": f"Ollama unavailable: {e}"})
+def api_tags():
+    """Ollama-compatible model list — served directly by assistant-core."""
+    return {
+        "models": [
+            {
+                "name": MODEL_NAME,
+                "model": MODEL_NAME,
+                "modified_at": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+                "size": 0,
+                "digest": "",
+                "details": {
+                    "parent_model": "",
+                    "format": "api",
+                    "family": "assistant",
+                    "parameter_size": "0",
+                    "quantization_level": "none",
+                },
+            }
+        ]
+    }
 
 
 @app.post("/api/chat")
 async def api_chat(req: OllamaChatRequest):
-    """Ollama-compatible chat endpoint.
+    """Ollama-compatible chat shim — handled directly by assistant-core.
 
-    Accepts Ollama chat format, forwards to Ollama, returns Ollama response format.
-    Stream parameter is accepted but responses are non-streaming.
+    Accepts Ollama chat format, processes through tool detection,
+    returns Ollama-compatible JSON. Non-streaming.
     """
-    model = req.model or DEFAULT_MODEL
+    model = req.model or MODEL_NAME
     messages = req.messages or []
 
-    # Inject system prompt if not already present
-    if not any(m.get("role") == "system" for m in messages):
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + messages
+    # Extract the last user message for processing
+    user_message = ""
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            user_message = msg.get("content", "")
+            break
 
-    body = {"model": model, "messages": messages, "stream": False}
-    if req.options:
-        body["options"] = req.options
+    if not user_message:
+        return _ollama_chat_response("No message provided.", model)
 
-    try:
-        result = await _ollama_post("/api/chat", body)
-        return result
-    except httpx.HTTPError as e:
-        logger.error(f"/api/chat Ollama error: {e}")
-        return JSONResponse(status_code=502, content={"error": f"Ollama unavailable: {e}"})
+    response_text, _tool = await _handle_message(user_message, model)
+    return _ollama_chat_response(response_text, model)
 
 
 @app.post("/api/generate")
 async def api_generate(req: OllamaGenerateRequest):
-    """Ollama-compatible generate endpoint.
+    """Ollama-compatible generate shim — handled directly by assistant-core.
 
-    Accepts Ollama generate format, forwards to Ollama, returns Ollama response format.
-    Stream parameter is accepted but responses are non-streaming.
+    Accepts Ollama generate format, processes through tool detection,
+    returns Ollama-compatible JSON. Non-streaming.
     """
-    model = req.model or DEFAULT_MODEL
-    body = {"model": model, "prompt": req.prompt, "stream": False}
-    if req.options:
-        body["options"] = req.options
+    model = req.model or MODEL_NAME
+    prompt = req.prompt.strip()
 
-    try:
-        result = await _ollama_post("/api/generate", body)
-        return result
-    except httpx.HTTPError as e:
-        logger.error(f"/api/generate Ollama error: {e}")
-        return JSONResponse(status_code=502, content={"error": f"Ollama unavailable: {e}"})
+    if not prompt:
+        return _ollama_generate_response("No prompt provided.", model)
+
+    response_text, _tool = await _handle_message(prompt, model)
+    return _ollama_generate_response(response_text, model)
