@@ -62,12 +62,12 @@ async def execute_action(intent: WhatsAppIntent, client_id: int | None,
         if action == "latency_check":
             return await _execute_latency_check(intent.entities)
 
-        # --- Support intake ---
+        # --- Support intake (NL match → show support menu) ---
         if action == "support_intake":
             return ActionResult(
                 action=action, success=True,
                 data={"message": intent.raw_message},
-                display_hint="support",
+                display_hint="support_menu",
             )
 
         # --- Greeting ---

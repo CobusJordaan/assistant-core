@@ -83,6 +83,29 @@ class BillingClient:
         resp.raise_for_status()
         return resp.json()
 
+    def create_support_ticket(self, client_id: int | None, category: str,
+                              subject: str, message: str,
+                              source: str = "whatsapp",
+                              source_phone: str = "") -> dict:
+        """Create a support ticket via the billing API."""
+        self._check_configured()
+        payload = {
+            "client_id": client_id,
+            "category": category,
+            "subject": subject,
+            "message": message,
+            "source": source,
+            "source_phone": source_phone,
+        }
+        resp = httpx.post(
+            f"{self.base_url}/api/assistant/create-support-ticket",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
 
 # Module-level singleton
 billing_client = BillingClient()

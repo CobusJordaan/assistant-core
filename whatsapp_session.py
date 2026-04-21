@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS whatsapp_sessions (
     history         TEXT DEFAULT '[]',
     active_menu_key TEXT,
     menu_created_at TEXT,
+    support_category TEXT,
+    awaiting_support_description INTEGER DEFAULT 0,
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL
 )
@@ -30,6 +32,8 @@ CREATE TABLE IF NOT EXISTS whatsapp_sessions (
 _MENU_COLUMNS = [
     ("active_menu_key", "TEXT"),
     ("menu_created_at", "TEXT"),
+    ("support_category", "TEXT"),
+    ("awaiting_support_description", "INTEGER DEFAULT 0"),
 ]
 
 
@@ -40,13 +44,16 @@ class WhatsAppSession:
         "from_number", "client_id", "client_name", "greeted_at",
         "last_message_at", "last_reply", "history",
         "active_menu_key", "menu_created_at",
+        "support_category", "awaiting_support_description",
         "created_at", "updated_at",
     )
 
     def __init__(self, from_number: str, client_id: int | None, client_name: str,
                  greeted_at: str | None, last_message_at: str, last_reply: str,
                  history: list[dict], created_at: str, updated_at: str,
-                 active_menu_key: str | None = None, menu_created_at: str | None = None):
+                 active_menu_key: str | None = None, menu_created_at: str | None = None,
+                 support_category: str | None = None,
+                 awaiting_support_description: bool = False):
         self.from_number = from_number
         self.client_id = client_id
         self.client_name = client_name
@@ -56,6 +63,8 @@ class WhatsAppSession:
         self.history = history
         self.active_menu_key = active_menu_key
         self.menu_created_at = menu_created_at
+        self.support_category = support_category
+        self.awaiting_support_description = awaiting_support_description
         self.created_at = created_at
         self.updated_at = updated_at
 
@@ -158,6 +167,28 @@ class WhatsAppSessionStore:
         )
         self._conn.commit()
 
+    def set_support_category(self, from_number: str, category: str):
+        """Set support category and flag awaiting description."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET support_category = ?, awaiting_support_description = 1, updated_at = ?
+               WHERE from_number = ?""",
+            (category, now, from_number),
+        )
+        self._conn.commit()
+
+    def clear_support_state(self, from_number: str):
+        """Clear support category and awaiting flag."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET support_category = NULL, awaiting_support_description = 0, updated_at = ?
+               WHERE from_number = ?""",
+            (now, from_number),
+        )
+        self._conn.commit()
+
     def update_after_reply(self, from_number: str, user_message: str, reply: str):
         """Update session after processing: bump timestamps, store reply, append history."""
         now = datetime.now(timezone.utc).isoformat()
@@ -201,6 +232,7 @@ class WhatsAppSessionStore:
                SET client_id = ?, client_name = ?, greeted_at = NULL,
                    last_message_at = ?, last_reply = '', history = '[]',
                    active_menu_key = NULL, menu_created_at = NULL,
+                   support_category = NULL, awaiting_support_description = 0,
                    updated_at = ?
                WHERE from_number = ?""",
             (client_id, client_name, now, now, from_number),
@@ -221,4 +253,6 @@ class WhatsAppSessionStore:
             updated_at=row["updated_at"],
             active_menu_key=row["active_menu_key"],
             menu_created_at=row["menu_created_at"],
+            support_category=row["support_category"],
+            awaiting_support_description=bool(row["awaiting_support_description"]),
         )

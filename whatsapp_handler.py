@@ -10,7 +10,9 @@ from whatsapp_menu import (
     resolve_menu_selection,
     render_main_menu,
     render_document_menu,
+    render_support_menu,
     render_invalid_selection,
+    SUPPORT_CATEGORIES,
 )
 
 logger = logging.getLogger("assistant-core.wa-handler")
@@ -37,7 +39,13 @@ async def handle_whatsapp_message(
     # 2. Load or create session (auto-resets after 30 min inactivity)
     session = session_store.get_or_create(from_number, client_id, client_name)
 
-    # 3. Check for menu selection BEFORE intent classification
+    # 3. Check if we're awaiting a support ticket description
+    if session.awaiting_support_description:
+        return await _handle_support_description(
+            session_store, session, from_number, body, client_name
+        )
+
+    # 4. Check for menu selection BEFORE intent classification
     menu_result = resolve_menu_selection(
         body, session.active_menu_key, session.menu_created_at
     )
@@ -47,17 +55,17 @@ async def handle_whatsapp_message(
             session_store, session, from_number, body, client_name, menu_result
         )
 
-    # 4. Classify intent via natural language
+    # 5. Classify intent via natural language
     intent = classify_whatsapp_intent(body)
     logger.info(
         "WA intent: from=%s action=%s conf=%.2f msg=%s",
         from_number, intent.action, intent.confidence, body[:80],
     )
 
-    # 5. Build reply
+    # 6. Build reply
     reply_parts: list[str] = []
 
-    # 5a. Greeting on first message in session → show main menu
+    # 6a. Greeting on first message in session → show main menu
     if session.needs_greeting:
         greeting_menu = render_main_menu(client_name)
         reply_parts.append(greeting_menu)
@@ -70,7 +78,7 @@ async def handle_whatsapp_message(
             session_store.update_after_reply(from_number, body, greeting_menu)
             return greeting_menu
 
-    # 5b. Repeated greeting within active session → show menu again
+    # 6b. Repeated greeting within active session → show menu again
     if intent.action == "greeting" and not session.needs_greeting:
         reply = render_main_menu(client_name)
         session_store.set_menu(from_number, "main_menu")
@@ -78,7 +86,7 @@ async def handle_whatsapp_message(
         session_store.update_after_reply(from_number, body, reply)
         return reply
 
-    # 5c. Unknown intent → show menu
+    # 6c. Unknown intent → show menu
     if intent.action == "unknown":
         reply = render_main_menu(client_name)
         session_store.set_menu(from_number, "main_menu")
@@ -86,14 +94,23 @@ async def handle_whatsapp_message(
         session_store.update_after_reply(from_number, body, reply)
         return reply
 
-    # 6. Execute action (natural language matched — clear any active menu)
+    # 6d. Support intent via NL → show support category menu
+    if intent.action == "support_intake":
+        reply = render_support_menu()
+        session_store.clear_menu(from_number)
+        session_store.set_menu(from_number, "support_menu")
+        logger.info("Menu shown: support_menu (NL intent) for %s", from_number)
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    # 7. Execute action (natural language matched — clear any active menu)
     session_store.clear_menu(from_number)
     result = await execute_action(intent, session.client_id, session.client_name)
 
-    # 7. Format the action reply
+    # 8. Format the action reply
     action_reply = format_wa_reply(result, client_name)
 
-    # 8. Combine greeting + action if this is the first message with an intent
+    # 9. Combine greeting + action if this is the first message with an intent
     if reply_parts:
         reply_parts.append("")
         reply_parts.append(action_reply)
@@ -101,11 +118,11 @@ async def handle_whatsapp_message(
     else:
         reply = action_reply
 
-    # 9. Avoid repeating identical replies (unless user repeated the same question)
+    # 10. Avoid repeating identical replies (unless user repeated the same question)
     if reply == session.last_reply:
         reply = "I just sent you that info. Is there anything else I can help with?"
 
-    # 10. Update session
+    # 11. Update session
     session_store.update_after_reply(from_number, body, reply)
 
     return reply
@@ -139,6 +156,29 @@ async def _handle_menu_selection(
         session_store.update_after_reply(from_number, body, reply)
         return reply
 
+    # Sub-menu: support menu
+    if action == "_support_menu":
+        reply = render_support_menu()
+        session_store.set_menu(from_number, "support_menu")
+        logger.info("Menu shown: support_menu for %s (from selection '%s')",
+                     from_number, body.strip())
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    # Support category selected → ask for description
+    if action in SUPPORT_CATEGORIES:
+        cat = SUPPORT_CATEGORIES[action]
+        session_store.clear_menu(from_number)
+        session_store.set_support_category(from_number, cat["key"])
+        reply = (
+            f"*{cat['label']}* \u2014 got it.\n\n"
+            "Please describe your issue briefly and I'll create a support ticket for you."
+        )
+        logger.info("Support category '%s' selected by %s, awaiting description",
+                     cat["key"], from_number)
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
     # Real action — clear menu and execute
     session_store.clear_menu(from_number)
     logger.info("Menu selection resolved: '%s' -> %s for %s",
@@ -151,6 +191,67 @@ async def _handle_menu_selection(
     # Avoid repeating identical replies
     if reply == session.last_reply:
         reply = "I just sent you that info. Is there anything else I can help with?"
+
+    session_store.update_after_reply(from_number, body, reply)
+    return reply
+
+
+async def _handle_support_description(
+    session_store: WhatsAppSessionStore,
+    session,
+    from_number: str,
+    body: str,
+    client_name: str,
+) -> str:
+    """User sent a description for their support ticket — create it."""
+    category = session.support_category or "general"
+
+    # Map category key back to label
+    cat_labels = {
+        "connectivity": "Connectivity / speed issue",
+        "billing": "Billing or payment query",
+        "general": "General / other",
+    }
+    subject = cat_labels.get(category, "General / other")
+
+    # Clear support state immediately
+    session_store.clear_support_state(from_number)
+
+    # Create ticket via billing API
+    try:
+        from billing_client import billing_client
+        result = billing_client.create_support_ticket(
+            client_id=session.client_id,
+            category=category,
+            subject=subject,
+            message=body.strip(),
+            source="whatsapp",
+            source_phone=from_number,
+        )
+
+        if result.get("success"):
+            ticket_number = result.get("ticket_number", "")
+            reply = (
+                f"Your support ticket *#{ticket_number}* has been created.\n"
+                f"Category: {subject}\n\n"
+                "Our team will follow up with you shortly. "
+                "Is there anything else I can help with?"
+            )
+            logger.info("Support ticket %s created for %s (category=%s)",
+                        ticket_number, from_number, category)
+        else:
+            error = result.get("error", "unknown")
+            logger.error("Failed to create support ticket for %s: %s", from_number, error)
+            reply = (
+                "I'm sorry, I couldn't create the ticket right now. "
+                "Please try again in a moment, or contact us directly for support."
+            )
+    except Exception as e:
+        logger.error("Support ticket creation error for %s: %s", from_number, e, exc_info=True)
+        reply = (
+            "I'm sorry, something went wrong creating your ticket. "
+            "Please try again in a moment."
+        )
 
     session_store.update_after_reply(from_number, body, reply)
     return reply

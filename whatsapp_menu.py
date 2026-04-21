@@ -22,7 +22,7 @@ MAIN_MENU = {
         "1": {"label": "Account summary", "action": "client_summary"},
         "2": {"label": "Balance and unpaid invoices", "action": "balance_check"},
         "3": {"label": "Invoice or statement", "action": "_document_menu"},
-        "4": {"label": "Support", "action": "support_intake"},
+        "4": {"label": "Support", "action": "_support_menu"},
         "5": {"label": "Connection check", "action": "latency_check"},
     },
 }
@@ -35,9 +35,26 @@ DOCUMENT_MENU = {
     },
 }
 
+SUPPORT_MENU = {
+    "menu_key": "support_menu",
+    "options": {
+        "1": {"label": "Connectivity / speed issue", "action": "_support_connectivity"},
+        "2": {"label": "Billing or payment query", "action": "_support_billing"},
+        "3": {"label": "General / other", "action": "_support_other"},
+    },
+}
+
+# Category label lookup for ticket creation
+SUPPORT_CATEGORIES = {
+    "_support_connectivity": {"key": "connectivity", "label": "Connectivity / speed issue"},
+    "_support_billing": {"key": "billing", "label": "Billing or payment query"},
+    "_support_other": {"key": "general", "label": "General / other"},
+}
+
 _MENU_REGISTRY = {
     "main_menu": MAIN_MENU,
     "document_menu": DOCUMENT_MENU,
+    "support_menu": SUPPORT_MENU,
 }
 
 
@@ -81,6 +98,11 @@ def render_invalid_selection(menu_key: str) -> str:
 def render_document_menu() -> str:
     """Render the document sub-menu."""
     return render_menu("document_menu", "Sure \u2014 what would you like me to send?")
+
+
+def render_support_menu() -> str:
+    """Render the support category sub-menu."""
+    return render_menu("support_menu", "What kind of issue are you experiencing?")
 
 
 # ---------------------------------------------------------------------------
