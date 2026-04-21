@@ -39,6 +39,7 @@ _MENU_COLUMNS = [
     ("pending_client_id", "INTEGER"),
     ("pending_client_name", "TEXT DEFAULT ''"),
     ("pending_client_email", "TEXT DEFAULT ''"),
+    ("manually_linked", "INTEGER DEFAULT 0"),
 ]
 
 
@@ -52,6 +53,7 @@ class WhatsAppSession:
         "support_category", "awaiting_support_description",
         "awaiting_account_lookup", "awaiting_email_verification",
         "pending_client_id", "pending_client_name", "pending_client_email",
+        "manually_linked",
         "created_at", "updated_at",
     )
 
@@ -65,7 +67,8 @@ class WhatsAppSession:
                  awaiting_email_verification: bool = False,
                  pending_client_id: int | None = None,
                  pending_client_name: str = "",
-                 pending_client_email: str = ""):
+                 pending_client_email: str = "",
+                 manually_linked: bool = False):
         self.from_number = from_number
         self.client_id = client_id
         self.client_name = client_name
@@ -82,6 +85,7 @@ class WhatsAppSession:
         self.pending_client_id = pending_client_id
         self.pending_client_name = pending_client_name
         self.pending_client_email = pending_client_email
+        self.manually_linked = manually_linked
         self.created_at = created_at
         self.updated_at = updated_at
 
@@ -145,14 +149,18 @@ class WhatsAppSessionStore:
                 logger.info("WA session expired for %s, resetting", from_number)
                 return self._reset_session(from_number, client_id, client_name, now)
             # Update client info if changed (including clearing when number removed)
+            # But don't let billing's None overwrite a manually-verified client link
             if session.client_id != client_id:
-                self._conn.execute(
-                    "UPDATE whatsapp_sessions SET client_id = ?, client_name = ?, updated_at = ? WHERE from_number = ?",
-                    (client_id, client_name or '', now, from_number),
-                )
-                self._conn.commit()
-                session.client_id = client_id
-                session.client_name = client_name or ''
+                if client_id is None and session.manually_linked:
+                    logger.debug("Keeping manually-linked client %s for %s", session.client_id, from_number)
+                else:
+                    self._conn.execute(
+                        "UPDATE whatsapp_sessions SET client_id = ?, client_name = ?, updated_at = ? WHERE from_number = ?",
+                        (client_id, client_name or '', now, from_number),
+                    )
+                    self._conn.commit()
+                    session.client_id = client_id
+                    session.client_name = client_name or ''
             return session
 
         return self._create_session(from_number, client_id, client_name, now)
@@ -241,7 +249,7 @@ class WhatsAppSessionStore:
                SET client_id = pending_client_id, client_name = pending_client_name,
                    awaiting_account_lookup = 0, awaiting_email_verification = 0,
                    pending_client_id = NULL, pending_client_name = '',
-                   pending_client_email = '', updated_at = ?
+                   pending_client_email = '', manually_linked = 1, updated_at = ?
                WHERE from_number = ?""",
             (now, from_number),
         )
@@ -254,7 +262,7 @@ class WhatsAppSessionStore:
             """UPDATE whatsapp_sessions
                SET awaiting_account_lookup = 0, awaiting_email_verification = 0,
                    pending_client_id = NULL, pending_client_name = '',
-                   pending_client_email = '', updated_at = ?
+                   pending_client_email = '', manually_linked = 0, updated_at = ?
                WHERE from_number = ?""",
             (now, from_number),
         )
@@ -306,7 +314,7 @@ class WhatsAppSessionStore:
                    support_category = NULL, awaiting_support_description = 0,
                    awaiting_account_lookup = 0, awaiting_email_verification = 0,
                    pending_client_id = NULL, pending_client_name = '',
-                   pending_client_email = '',
+                   pending_client_email = '', manually_linked = 0,
                    updated_at = ?
                WHERE from_number = ?""",
             (client_id, client_name, now, now, from_number),
@@ -334,4 +342,5 @@ class WhatsAppSessionStore:
             pending_client_id=row["pending_client_id"],
             pending_client_name=row["pending_client_name"] or "",
             pending_client_email=row["pending_client_email"] or "",
+            manually_linked=bool(row["manually_linked"]) if row["manually_linked"] is not None else False,
         )
