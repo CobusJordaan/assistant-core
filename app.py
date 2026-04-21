@@ -7,7 +7,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Any
 
@@ -18,7 +18,8 @@ from memory_api import MemoryStore, memory_router
 from tools import register_tool, list_tools, execute_tool
 from tool_intent import detect_intent
 from billing_client import billing_client
-from billing_format import format_billing_result
+from billing_format import format_billing_result, format_client_lookup
+from billing_session import set_client, get_client
 
 # ---------------------------------------------------------------------------
 # Config
@@ -171,25 +172,64 @@ def _ollama_generate_response(content: str, model: str | None = None) -> dict:
     }
 
 
-async def _handle_message(message: str, model: str | None = None) -> tuple[str, str | None]:
-    """Process a message through tool detection.
+NO_CLIENT_MSG = "No client selected. Use \"find client <name>\" first, then \"use <client_id>\" to select one."
+
+
+async def _handle_message(message: str, session_id: str = "default", model: str | None = None) -> tuple[str, str | None]:
+    """Process a message through tool detection with billing session context.
 
     Returns (response_text, tool_name_or_none).
     """
     intent = detect_intent(message)
-    if intent:
-        result = await execute_tool(intent["tool"], intent.get("args"))
-        tool_name = intent["tool"]
+    if not intent:
+        return f"Received: {message}", None
 
-        # Format billing results as clean text
-        if tool_name.startswith("billing_"):
-            formatted = format_billing_result(tool_name, result)
-            if formatted:
-                return formatted, tool_name
+    tool_name = intent["tool"]
+    args = intent.get("args", {})
 
+    # --- Billing select client ---
+    if tool_name == "billing_select_client":
+        client_id = args["client_id"]
+        # Quick lookup to confirm the client exists and get the name
+        result = await execute_tool("billing_client_lookup", {"query": str(client_id)})
+        data = result.get("result", {})
+        clients = data.get("clients", []) if isinstance(data, dict) else []
+        # Find exact ID match
+        match = next((c for c in clients if c.get("id") == client_id), None)
+        if match:
+            name = match.get("fullname", "Unknown")
+            set_client(session_id, client_id, name)
+            return f"Selected client {client_id} — {name}.", tool_name
+        else:
+            return f"Client {client_id} not found.", tool_name
+
+    # --- Billing client lookup ---
+    if tool_name == "billing_client_lookup":
+        result = await execute_tool(tool_name, args)
+        text, clients = format_client_lookup(result)
+        # Auto-select if exactly 1 match
+        if len(clients) == 1:
+            c = clients[0]
+            set_client(session_id, c["id"], c.get("fullname", ""))
+        return text, tool_name
+
+    # --- Billing follow-up commands (may need session context) ---
+    if tool_name in ("billing_client_balance", "billing_unpaid_invoices", "billing_client_summary"):
+        if "client_id" not in args or not args["client_id"]:
+            ctx = get_client(session_id)
+            if not ctx:
+                return NO_CLIENT_MSG, tool_name
+            args["client_id"] = ctx["client_id"]
+
+        result = await execute_tool(tool_name, args)
+        formatted = format_billing_result(tool_name, result)
+        if formatted:
+            return formatted, tool_name
         return json.dumps(result, indent=2, default=str), tool_name
 
-    return f"Received: {message}", None
+    # --- Non-billing tools (ping, dns, http, tcp) ---
+    result = await execute_tool(tool_name, args)
+    return json.dumps(result, indent=2, default=str), tool_name
 
 
 # ---------------------------------------------------------------------------
@@ -213,8 +253,9 @@ async def chat(req: ChatRequest):
     """High-level chat endpoint with tool detection."""
     message = req.message.strip()
     model = req.model or DEFAULT_MODEL
+    session_id = req.session_id or "default"
 
-    response_text, tool_used = await _handle_message(message, model)
+    response_text, tool_used = await _handle_message(message, session_id, model)
     result = {"response": response_text, "model": model}
     if tool_used:
         result["tool_used"] = tool_used
@@ -262,7 +303,7 @@ def api_tags():
 
 
 @app.post("/api/chat")
-async def api_chat(req: OllamaChatRequest):
+async def api_chat(req: OllamaChatRequest, request: Request):
     """Ollama-compatible chat shim — handled directly by assistant-core.
 
     Accepts Ollama chat format, processes through tool detection,
@@ -270,6 +311,7 @@ async def api_chat(req: OllamaChatRequest):
     """
     model = req.model or MODEL_NAME
     messages = req.messages or []
+    session_id = request.headers.get("X-Session-Id", "default")
 
     # Extract the last user message for processing
     user_message = ""
@@ -281,12 +323,12 @@ async def api_chat(req: OllamaChatRequest):
     if not user_message:
         return _ollama_chat_response("No message provided.", model)
 
-    response_text, _tool = await _handle_message(user_message, model)
+    response_text, _tool = await _handle_message(user_message, session_id, model)
     return _ollama_chat_response(response_text, model)
 
 
 @app.post("/api/generate")
-async def api_generate(req: OllamaGenerateRequest):
+async def api_generate(req: OllamaGenerateRequest, request: Request):
     """Ollama-compatible generate shim — handled directly by assistant-core.
 
     Accepts Ollama generate format, processes through tool detection,
@@ -294,9 +336,10 @@ async def api_generate(req: OllamaGenerateRequest):
     """
     model = req.model or MODEL_NAME
     prompt = req.prompt.strip()
+    session_id = request.headers.get("X-Session-Id", "default")
 
     if not prompt:
         return _ollama_generate_response("No prompt provided.", model)
 
-    response_text, _tool = await _handle_message(prompt, model)
+    response_text, _tool = await _handle_message(prompt, session_id, model)
     return _ollama_generate_response(response_text, model)

@@ -3,20 +3,11 @@
 
 def format_billing_result(tool_name: str, result: dict) -> str | None:
     """Format a billing tool result. Returns formatted text or None if not a billing tool."""
-    data = result.get("result")
-    if not data:
-        error = result.get("error") or data
-        return f"Billing error: {error}"
-
-    if not isinstance(data, dict):
-        return None
-
-    # API-level error
-    if not data.get("success"):
-        return f"Billing API error: {data.get('error', 'Unknown error')}"
+    data = _extract_data(result)
+    if isinstance(data, str):
+        return data  # error message
 
     formatters = {
-        "billing_client_lookup": _format_client_lookup,
         "billing_client_balance": _format_client_balance,
         "billing_unpaid_invoices": _format_unpaid_invoices,
         "billing_client_summary": _format_client_summary,
@@ -28,34 +19,76 @@ def format_billing_result(tool_name: str, result: dict) -> str | None:
     return None
 
 
-def _format_client_lookup(data: dict) -> str:
+def format_client_lookup(result: dict) -> tuple[str, list[dict]]:
+    """Format client lookup results.
+
+    Returns (formatted_text, clients_list).
+    clients_list is the raw client dicts for session selection logic.
+    """
+    data = _extract_data(result)
+    if isinstance(data, str):
+        return data, []
+
     clients = data.get("clients", [])
     count = data.get("count", len(clients))
 
     if count == 0:
-        return "No matching clients found."
+        return "No matching clients found.", []
 
-    lines = [f"Found {count} matching client{'s' if count != 1 else ''}:"]
-    for c in clients:
-        cid = c.get("id", "?")
-        name = c.get("fullname", "Unknown")
-        num = c.get("client_number", "")
-        status = c.get("status", "")
-        email = c.get("email", "")
-        reseller = c.get("reseller_name", "")
+    if count == 1:
+        c = clients[0]
+        text = _format_single_client(c)
+        return text, clients
 
-        parts = [str(cid), name]
-        if num:
-            parts.append(num)
-        if status:
-            parts.append(status)
-        if email:
-            parts.append(email)
-        if reseller:
-            parts.append(f"[{reseller}]")
+    # Multiple matches — numbered shortlist
+    lines = [f"Found {count} matching clients:"]
+    for i, c in enumerate(clients, 1):
+        lines.append(f"  {i}. {_format_client_line(c)}")
+    lines.append("")
+    lines.append('Type "use <client_id>" to select a client.')
 
-        lines.append(f"  - {' | '.join(parts)}")
+    return "\n".join(lines), clients
 
+
+def _extract_data(result: dict) -> dict | str:
+    """Extract data from tool result, returning error string on failure."""
+    data = result.get("result")
+    if not data:
+        error = result.get("error") or "No data returned"
+        return f"Billing error: {error}"
+    if not isinstance(data, dict):
+        return f"Billing error: unexpected response"
+    if not data.get("success"):
+        return f"Billing API error: {data.get('error', 'Unknown error')}"
+    return data
+
+
+def _format_client_line(c: dict) -> str:
+    """Format a single client as a one-liner for shortlists."""
+    cid = c.get("id", "?")
+    name = c.get("fullname", "Unknown")
+    num = c.get("client_number", "")
+    status = c.get("status", "")
+    email = c.get("email", "")
+    reseller = c.get("reseller_name", "")
+
+    parts = [str(cid), name]
+    if num:
+        parts.append(num)
+    if status:
+        parts.append(status)
+    if email:
+        parts.append(email)
+    if reseller:
+        parts.append(f"[{reseller}]")
+
+    return " | ".join(parts)
+
+
+def _format_single_client(c: dict) -> str:
+    """Format a single auto-selected client match."""
+    lines = [f"Found 1 match — auto-selected:"]
+    lines.append(f"  {_format_client_line(c)}")
     return "\n".join(lines)
 
 
