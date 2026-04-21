@@ -19,7 +19,7 @@ from tools import register_tool, list_tools, execute_tool
 from tool_intent import detect_intent
 from billing_client import billing_client
 from billing_format import format_billing_result, format_client_lookup
-from billing_session import set_client, get_client
+from billing_session import set_client, get_client, set_last_lookup, get_last_lookup
 
 # ---------------------------------------------------------------------------
 # Config
@@ -187,26 +187,27 @@ async def _handle_message(message: str, session_id: str = "default", model: str 
     tool_name = intent["tool"]
     args = intent.get("args", {})
 
-    # --- Billing select client ---
+    # --- Billing select client (from last lookup, no API call) ---
     if tool_name == "billing_select_client":
         client_id = args["client_id"]
-        # Quick lookup to confirm the client exists and get the name
-        result = await execute_tool("billing_client_lookup", {"query": str(client_id)})
-        data = result.get("result", {})
-        clients = data.get("clients", []) if isinstance(data, dict) else []
-        # Find exact ID match
-        match = next((c for c in clients if c.get("id") == client_id), None)
+        last = get_last_lookup(session_id)
+        if not last:
+            return "No recent client lookup found. Please run 'find client <name>' first.", tool_name
+        match = next((c for c in last if c.get("id") == client_id), None)
         if match:
             name = match.get("fullname", "Unknown")
             set_client(session_id, client_id, name)
             return f"Selected client {client_id} — {name}.", tool_name
         else:
-            return f"Client {client_id} not found.", tool_name
+            ids = [str(c.get("id", "?")) for c in last]
+            return f"Client {client_id} not found in last results. Available IDs: {', '.join(ids)}", tool_name
 
     # --- Billing client lookup ---
     if tool_name == "billing_client_lookup":
         result = await execute_tool(tool_name, args)
         text, clients = format_client_lookup(result)
+        # Store results for "use <id>" follow-up
+        set_last_lookup(session_id, clients)
         # Auto-select if exactly 1 match
         if len(clients) == 1:
             c = clients[0]
