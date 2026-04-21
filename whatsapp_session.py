@@ -127,15 +127,15 @@ class WhatsAppSessionStore:
             if session.is_expired:
                 logger.info("WA session expired for %s, resetting", from_number)
                 return self._reset_session(from_number, client_id, client_name, now)
-            # Update client info if provided and changed
-            if client_id and session.client_id != client_id:
+            # Update client info if changed (including clearing when number removed)
+            if session.client_id != client_id:
                 self._conn.execute(
                     "UPDATE whatsapp_sessions SET client_id = ?, client_name = ?, updated_at = ? WHERE from_number = ?",
-                    (client_id, client_name, now, from_number),
+                    (client_id, client_name or '', now, from_number),
                 )
                 self._conn.commit()
                 session.client_id = client_id
-                session.client_name = client_name
+                session.client_name = client_name or ''
             return session
 
         return self._create_session(from_number, client_id, client_name, now)
