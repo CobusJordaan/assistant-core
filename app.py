@@ -3,6 +3,7 @@
 import os
 import json
 import time
+import hashlib
 import logging
 from contextlib import asynccontextmanager
 
@@ -124,17 +125,21 @@ class ToolRequest(BaseModel):
 
 
 class OllamaChatRequest(BaseModel):
+    model_config = {"extra": "allow"}
     model: str | None = None
     messages: list[dict] = []
     stream: bool = False
     options: dict | None = None
+    chat_id: str | None = None
 
 
 class OllamaGenerateRequest(BaseModel):
+    model_config = {"extra": "allow"}
     model: str | None = None
     prompt: str = ""
     stream: bool = False
     options: dict | None = None
+    chat_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +178,36 @@ def _ollama_generate_response(content: str, model: str | None = None) -> dict:
 
 
 NO_CLIENT_MSG = "No client selected yet. Please run 'find client <name>' first or use 'use <client_id>'."
+
+
+def _resolve_session_id(request: Request, messages: list[dict] | None = None,
+                        chat_id: str | None = None) -> str:
+    """Derive a stable session ID from the request context.
+
+    Priority:
+    1. X-Session-Id header (explicit)
+    2. chat_id from request body (Open WebUI sends this)
+    3. Hash of first user message content (stable per conversation)
+    4. "default" fallback
+    """
+    # 1. Explicit header
+    header = request.headers.get("X-Session-Id")
+    if header:
+        return header
+
+    # 2. chat_id from body
+    if chat_id:
+        return f"chat-{chat_id}"
+
+    # 3. Derive from first user message
+    if messages:
+        for msg in messages:
+            if msg.get("role") == "user" and msg.get("content"):
+                digest = hashlib.sha256(msg["content"].encode()).hexdigest()[:16]
+                return f"conv-{digest}"
+
+    # 4. Fallback
+    return "default"
 
 
 async def _handle_message(message: str, session_id: str = "default", model: str | None = None) -> tuple[str, str | None]:
@@ -312,7 +347,7 @@ async def api_chat(req: OllamaChatRequest, request: Request):
     """
     model = req.model or MODEL_NAME
     messages = req.messages or []
-    session_id = request.headers.get("X-Session-Id", "default")
+    session_id = _resolve_session_id(request, messages, req.chat_id)
 
     # Extract the last user message for processing
     user_message = ""
@@ -337,7 +372,7 @@ async def api_generate(req: OllamaGenerateRequest, request: Request):
     """
     model = req.model or MODEL_NAME
     prompt = req.prompt.strip()
-    session_id = request.headers.get("X-Session-Id", "default")
+    session_id = _resolve_session_id(request, chat_id=req.chat_id)
 
     if not prompt:
         return _ollama_generate_response("No prompt provided.", model)
