@@ -8,7 +8,8 @@ import logging
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Any
 
@@ -21,6 +22,7 @@ from tool_intent import detect_intent
 from billing_client import billing_client
 from billing_format import format_billing_result, format_client_lookup
 from billing_session import set_client, get_client, clear_client, set_last_lookup, get_last_lookup
+from whatsapp import WhatsAppDedup, normalize_phone, twiml_reply, twiml_empty
 
 # ---------------------------------------------------------------------------
 # Config
@@ -90,12 +92,17 @@ async def lifespan(application: FastAPI):
     store.initialize()
     application.state.memory = store
 
+    dedup = WhatsAppDedup(DATABASE_PATH)
+    dedup.initialize()
+    application.state.wa_dedup = dedup
+
     _register_billing_tools()
     logger.info(f"assistant-core started — {len(list_tools())} tools loaded")
 
     yield
 
     # Shutdown
+    dedup.close()
     store.close()
 
 
@@ -394,3 +401,68 @@ async def api_generate(req: OllamaGenerateRequest, request: Request):
 
     response_text, _tool = await _handle_message(prompt, session_id, model)
     return _ollama_generate_response(response_text, model)
+
+
+# ---------------------------------------------------------------------------
+# WhatsApp inbound webhook
+# ---------------------------------------------------------------------------
+
+@app.post("/webhooks/whatsapp/inbound")
+async def whatsapp_inbound(
+    request: Request,
+    MessageSid: str = Form(""),
+    From: str = Form(""),
+    To: str = Form(""),
+    Body: str = Form(""),
+    WaId: str = Form(""),
+    ProfileName: str = Form(""),
+):
+    """Twilio WhatsApp inbound webhook.
+
+    Receives inbound messages, looks up sender by phone in billing,
+    replies with a greeting. Deduplicates by MessageSid.
+    """
+    dedup: WhatsAppDedup = request.app.state.wa_dedup
+
+    # Reject if no MessageSid
+    if not MessageSid:
+        logger.warning("WhatsApp inbound: missing MessageSid")
+        return Response(content=twiml_empty(), media_type="application/xml")
+
+    # Dedup check
+    if dedup.is_duplicate(MessageSid):
+        logger.info(f"WhatsApp inbound: duplicate {MessageSid}, skipping")
+        return Response(content=twiml_empty(), media_type="application/xml")
+
+    # Normalize phone
+    phone = normalize_phone(From)
+    logger.info(f"WhatsApp inbound: sid={MessageSid} from={phone} profile={ProfileName}")
+
+    # Mark as processed immediately (before API call) to prevent race conditions
+    dedup.mark_processed(MessageSid, phone)
+
+    # Look up client by phone
+    reply_text = ""
+    match_count = "n/a"
+    try:
+        if not billing_client.configured:
+            reply_text = "Hi \U0001f44b"
+        else:
+            data = billing_client.client_by_phone(phone)
+            clients = data.get("clients", []) if data.get("success") else []
+            match_count = len(clients)
+
+            if len(clients) == 1:
+                name = clients[0].get("fullname", "")
+                reply_text = f"Hi {name} \U0001f44b"
+            elif len(clients) == 0:
+                reply_text = "Hi \U0001f44b We could not match your number to a client yet."
+            else:
+                reply_text = "Hi \U0001f44b We found more than one client for this number. Please contact support."
+
+        logger.info(f"WhatsApp inbound: sid={MessageSid} matched={match_count}")
+    except Exception as e:
+        logger.error(f"WhatsApp inbound: sid={MessageSid} billing lookup error: {e}")
+        reply_text = "Hi \U0001f44b"
+
+    return Response(content=twiml_reply(reply_text), media_type="application/xml")

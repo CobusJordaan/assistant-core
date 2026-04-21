@@ -59,6 +59,18 @@ class BillingClient:
         resp.raise_for_status()
         return resp.json()
 
+    def client_by_phone(self, phone: str) -> dict:
+        """Look up a client by phone number."""
+        self._check_configured()
+        resp = httpx.get(
+            f"{self.base_url}/api/assistant/client-by-phone",
+            params={"phone": phone},
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def client_summary(self, client_id: int) -> dict:
         """Full client overview: info, billing, services."""
         self._check_configured()
