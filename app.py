@@ -23,6 +23,8 @@ from billing_client import billing_client
 from billing_format import format_billing_result, format_client_lookup
 from billing_session import set_client, get_client, clear_client, set_last_lookup, get_last_lookup
 from whatsapp import WhatsAppDedup
+from whatsapp_session import WhatsAppSessionStore
+from whatsapp_handler import handle_whatsapp_message
 
 # ---------------------------------------------------------------------------
 # Config
@@ -106,12 +108,17 @@ async def lifespan(application: FastAPI):
     dedup.initialize()
     application.state.wa_dedup = dedup
 
+    wa_sessions = WhatsAppSessionStore(DATABASE_PATH)
+    wa_sessions.initialize()
+    application.state.wa_sessions = wa_sessions
+
     _register_billing_tools()
     logger.info(f"assistant-core started — {len(list_tools())} tools loaded")
 
     yield
 
     # Shutdown
+    wa_sessions.close()
     dedup.close()
     store.close()
 
@@ -486,12 +493,20 @@ async def whatsapp_inbound_internal(
             return {"success": True, "reply": stored_reply}
         return {"success": True, "reply": None, "duplicate": True}
 
-    # Build reply
-    client = req.client
-    if client and client.get("fullname"):
-        reply = f"Hi {client['fullname']} \U0001f44b"
-    else:
-        reply = "Hi \U0001f44b We could not match your number to a client yet."
+    # Process through WhatsApp handler (session + intent + action + format)
+    session_store: WhatsAppSessionStore = request.app.state.wa_sessions
+    try:
+        reply = await handle_whatsapp_message(
+            session_store=session_store,
+            message_id=req.message_id,
+            from_number=req.from_number,
+            body=req.body,
+            profile_name=req.profile_name,
+            client=req.client,
+        )
+    except Exception as e:
+        logger.error(f"WhatsApp handler error: {e}", exc_info=True)
+        reply = "Sorry, something went wrong. Please try again in a moment."
 
     # Store with reply for deterministic dedup
     dedup.mark_processed(req.message_id, req.from_number, reply)
