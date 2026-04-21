@@ -172,7 +172,7 @@ def _ollama_generate_response(content: str, model: str | None = None) -> dict:
     }
 
 
-NO_CLIENT_MSG = "No client selected. Use \"find client <name>\" first, then \"use <client_id>\" to select one."
+NO_CLIENT_MSG = "No client selected yet. Please run 'find client <name>' first or use 'use <client_id>'."
 
 
 async def _handle_message(message: str, session_id: str = "default", model: str | None = None) -> tuple[str, str | None]:
