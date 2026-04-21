@@ -18,6 +18,7 @@ from memory_api import MemoryStore, memory_router
 from tools import register_tool, list_tools, execute_tool
 from tool_intent import detect_intent
 from billing_client import billing_client
+from billing_format import format_billing_result
 
 # ---------------------------------------------------------------------------
 # Config
@@ -178,7 +179,15 @@ async def _handle_message(message: str, model: str | None = None) -> tuple[str, 
     intent = detect_intent(message)
     if intent:
         result = await execute_tool(intent["tool"], intent.get("args"))
-        return json.dumps(result, indent=2, default=str), intent["tool"]
+        tool_name = intent["tool"]
+
+        # Format billing results as clean text
+        if tool_name.startswith("billing_"):
+            formatted = format_billing_result(tool_name, result)
+            if formatted:
+                return formatted, tool_name
+
+        return json.dumps(result, indent=2, default=str), tool_name
 
     return f"Received: {message}", None
 
