@@ -30,10 +30,19 @@ from whatsapp import WhatsAppDedup
 
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "assistant-core")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "memory.db")
-ASSISTANT_CORE_API_TOKEN = os.getenv("ASSISTANT_CORE_API_TOKEN", "")
+ASSISTANT_CORE_API_TOKEN = os.getenv("ASSISTANT_CORE_API_TOKEN", "").strip()
 
 logger = logging.getLogger("assistant-core")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+
+print(
+    "ASSISTANT CORE TOKEN DEBUG:",
+    {
+        "token_present": bool(ASSISTANT_CORE_API_TOKEN),
+        "token_len": len(ASSISTANT_CORE_API_TOKEN),
+    },
+    flush=True,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -422,17 +431,28 @@ def _check_internal_token(authorization: str | None) -> bool:
     expected = (ASSISTANT_CORE_API_TOKEN or "").strip()
     provided = (authorization or "").strip()
 
+    print(
+        "AUTH DEBUG:",
+        {
+            "provided_present": bool(provided),
+            "expected_present": bool(expected),
+            "provided_len": len(provided),
+            "expected_len": len(expected),
+            "startswith_bearer": provided.lower().startswith("bearer "),
+        },
+        flush=True,
+    )
+
     if not expected:
         return False
+
     if not provided:
         return False
-
-    logger.debug("AUTH DEBUG: provided_present=%s expected_present=%s provided_len=%d expected_len=%d startswith_bearer=%s",
-                 bool(provided), bool(expected), len(provided), len(expected), provided.startswith("Bearer "))
 
     parts = provided.split(" ", 1)
     if len(parts) != 2 or parts[0].lower() != "bearer":
         return False
+
     return parts[1].strip() == expected
 
 
