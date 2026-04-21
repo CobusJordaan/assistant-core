@@ -57,15 +57,10 @@ def format_wa_reply(result: ActionResult, client_name: str = "") -> str:
             "Is there anything else I can check for you, like your balance or invoices?"
         )
 
-    # Unknown intent
+    # Unknown intent (safety fallback — handler normally shows menu instead)
     return (
-        "I'm not sure I understand. I can help with:\n"
-        "\u2022 Account balance\n"
-        "\u2022 Unpaid invoices\n"
-        "\u2022 Account summary\n"
-        "\u2022 Invoice or statement requests\n"
-        "\u2022 Connection issues\n\n"
-        "What would you like to know?"
+        "I'm not sure I understand. Please reply with a number from the menu, "
+        "or type something like *balance*, *invoices*, or *account summary*."
     )
 
 

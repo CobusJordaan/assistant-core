@@ -12,17 +12,25 @@ MAX_HISTORY_ENTRIES = 10
 
 CREATE_WA_SESSION_TABLE = """
 CREATE TABLE IF NOT EXISTS whatsapp_sessions (
-    from_number   TEXT PRIMARY KEY,
-    client_id     INTEGER,
-    client_name   TEXT DEFAULT '',
-    greeted_at    TEXT,
+    from_number     TEXT PRIMARY KEY,
+    client_id       INTEGER,
+    client_name     TEXT DEFAULT '',
+    greeted_at      TEXT,
     last_message_at TEXT NOT NULL,
-    last_reply    TEXT DEFAULT '',
-    history       TEXT DEFAULT '[]',
-    created_at    TEXT NOT NULL,
-    updated_at    TEXT NOT NULL
+    last_reply      TEXT DEFAULT '',
+    history         TEXT DEFAULT '[]',
+    active_menu_key TEXT,
+    menu_created_at TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
 )
 """
+
+# Migration: add menu columns to existing tables
+_MENU_COLUMNS = [
+    ("active_menu_key", "TEXT"),
+    ("menu_created_at", "TEXT"),
+]
 
 
 class WhatsAppSession:
@@ -30,12 +38,15 @@ class WhatsAppSession:
 
     __slots__ = (
         "from_number", "client_id", "client_name", "greeted_at",
-        "last_message_at", "last_reply", "history", "created_at", "updated_at",
+        "last_message_at", "last_reply", "history",
+        "active_menu_key", "menu_created_at",
+        "created_at", "updated_at",
     )
 
     def __init__(self, from_number: str, client_id: int | None, client_name: str,
                  greeted_at: str | None, last_message_at: str, last_reply: str,
-                 history: list[dict], created_at: str, updated_at: str):
+                 history: list[dict], created_at: str, updated_at: str,
+                 active_menu_key: str | None = None, menu_created_at: str | None = None):
         self.from_number = from_number
         self.client_id = client_id
         self.client_name = client_name
@@ -43,6 +54,8 @@ class WhatsAppSession:
         self.last_message_at = last_message_at
         self.last_reply = last_reply
         self.history = history
+        self.active_menu_key = active_menu_key
+        self.menu_created_at = menu_created_at
         self.created_at = created_at
         self.updated_at = updated_at
 
@@ -72,6 +85,14 @@ class WhatsAppSessionStore:
         self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute(CREATE_WA_SESSION_TABLE)
+        # Migrate: add menu columns if missing
+        for col_name, col_type in _MENU_COLUMNS:
+            try:
+                self._conn.execute(
+                    f"ALTER TABLE whatsapp_sessions ADD COLUMN {col_name} {col_type}"
+                )
+            except sqlite3.OperationalError:
+                pass  # column already exists
         self._conn.commit()
         logger.info("WhatsApp session store initialized")
 
@@ -119,6 +140,24 @@ class WhatsAppSessionStore:
         )
         self._conn.commit()
 
+    def set_menu(self, from_number: str, menu_key: str):
+        """Set the active menu for this session."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            "UPDATE whatsapp_sessions SET active_menu_key = ?, menu_created_at = ?, updated_at = ? WHERE from_number = ?",
+            (menu_key, now, now, from_number),
+        )
+        self._conn.commit()
+
+    def clear_menu(self, from_number: str):
+        """Clear the active menu for this session."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            "UPDATE whatsapp_sessions SET active_menu_key = NULL, menu_created_at = NULL, updated_at = ? WHERE from_number = ?",
+            (now, from_number),
+        )
+        self._conn.commit()
+
     def update_after_reply(self, from_number: str, user_message: str, reply: str):
         """Update session after processing: bump timestamps, store reply, append history."""
         now = datetime.now(timezone.utc).isoformat()
@@ -161,6 +200,7 @@ class WhatsAppSessionStore:
             """UPDATE whatsapp_sessions
                SET client_id = ?, client_name = ?, greeted_at = NULL,
                    last_message_at = ?, last_reply = '', history = '[]',
+                   active_menu_key = NULL, menu_created_at = NULL,
                    updated_at = ?
                WHERE from_number = ?""",
             (client_id, client_name, now, now, from_number),
@@ -179,4 +219,6 @@ class WhatsAppSessionStore:
             history=json.loads(row["history"] or "[]"),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            active_menu_key=row["active_menu_key"],
+            menu_created_at=row["menu_created_at"],
         )
