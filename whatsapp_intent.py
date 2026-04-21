@@ -1,7 +1,10 @@
 """Pattern-based intent classifier for WhatsApp messages."""
 
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass, field
+from typing import Callable, Any
 
 
 @dataclass
@@ -17,11 +20,11 @@ class WhatsAppIntent:
 # Pattern registry — checked in order, first match wins
 # ---------------------------------------------------------------------------
 
-_INTENT_PATTERNS: list[tuple[re.Pattern, str, float, callable | None]] = []
+_INTENT_PATTERNS: list[tuple[re.Pattern, str, float, Callable[..., Any] | None]] = []
 
 
 def _p(pattern: str, action: str, confidence: float = 0.85,
-       entity_fn: callable | None = None):
+       entity_fn: Callable[..., Any] | None = None):
     _INTENT_PATTERNS.append(
         (re.compile(pattern, re.IGNORECASE), action, confidence, entity_fn)
     )
