@@ -8,8 +8,8 @@ import logging
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import Response
+from fastapi import FastAPI, Header, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Any
 
@@ -22,7 +22,7 @@ from tool_intent import detect_intent
 from billing_client import billing_client
 from billing_format import format_billing_result, format_client_lookup
 from billing_session import set_client, get_client, clear_client, set_last_lookup, get_last_lookup
-from whatsapp import WhatsAppDedup, normalize_phone, twiml_reply, twiml_empty
+from whatsapp import WhatsAppDedup
 
 # ---------------------------------------------------------------------------
 # Config
@@ -30,6 +30,7 @@ from whatsapp import WhatsAppDedup, normalize_phone, twiml_reply, twiml_empty
 
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "assistant-core")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "memory.db")
+ASSISTANT_CORE_API_TOKEN = os.getenv("ASSISTANT_CORE_API_TOKEN", "")
 
 logger = logging.getLogger("assistant-core")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -404,65 +405,69 @@ async def api_generate(req: OllamaGenerateRequest, request: Request):
 
 
 # ---------------------------------------------------------------------------
-# WhatsApp inbound webhook
+# Internal WhatsApp inbound (called by billing, not Twilio directly)
 # ---------------------------------------------------------------------------
 
-@app.post("/webhooks/whatsapp/inbound")
-async def whatsapp_inbound(
-    request: Request,
-    MessageSid: str = Form(""),
-    From: str = Form(""),
-    To: str = Form(""),
-    Body: str = Form(""),
-    WaId: str = Form(""),
-    ProfileName: str = Form(""),
-):
-    """Twilio WhatsApp inbound webhook.
+class WhatsAppInboundRequest(BaseModel):
+    message_id: str
+    channel: str = "whatsapp"
+    from_number: str = ""
+    body: str = ""
+    profile_name: str = ""
+    client: dict | None = None
 
-    Receives inbound messages, looks up sender by phone in billing,
-    replies with a greeting. Deduplicates by MessageSid.
+
+def _check_internal_token(authorization: str | None) -> bool:
+    """Validate Bearer token for internal endpoints."""
+    if not ASSISTANT_CORE_API_TOKEN:
+        return False
+    if not authorization:
+        return False
+    parts = authorization.split(" ", 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return False
+    return parts[1] == ASSISTANT_CORE_API_TOKEN
+
+
+@app.post("/internal/whatsapp/inbound")
+async def whatsapp_inbound_internal(
+    req: WhatsAppInboundRequest,
+    request: Request,
+    authorization: str | None = Header(None),
+):
+    """Internal WhatsApp inbound endpoint.
+
+    Called by the billing service (which handles Twilio directly).
+    Accepts JSON with client context, returns a reply for billing to send.
+    Protected by bearer token.
     """
+    # Auth check
+    if not _check_internal_token(authorization):
+        return JSONResponse(status_code=401, content={"success": False, "error": "Unauthorized"})
+
     dedup: WhatsAppDedup = request.app.state.wa_dedup
 
-    # Reject if no MessageSid
-    if not MessageSid:
-        logger.warning("WhatsApp inbound: missing MessageSid")
-        return Response(content=twiml_empty(), media_type="application/xml")
+    # Reject if no message_id
+    if not req.message_id:
+        return {"success": False, "error": "message_id is required"}
 
-    # Dedup check
-    if dedup.is_duplicate(MessageSid):
-        logger.info(f"WhatsApp inbound: duplicate {MessageSid}, skipping")
-        return Response(content=twiml_empty(), media_type="application/xml")
+    # Dedup check — return stored reply if available
+    if dedup.is_duplicate(req.message_id):
+        stored_reply = dedup.get_reply(req.message_id)
+        logger.info(f"WhatsApp internal: duplicate {req.message_id}")
+        if stored_reply is not None:
+            return {"success": True, "reply": stored_reply}
+        return {"success": True, "reply": None, "duplicate": True}
 
-    # Normalize phone
-    phone = normalize_phone(From)
-    logger.info(f"WhatsApp inbound: sid={MessageSid} from={phone} profile={ProfileName}")
+    # Build reply
+    client = req.client
+    if client and client.get("fullname"):
+        reply = f"Hi {client['fullname']} \U0001f44b"
+    else:
+        reply = "Hi \U0001f44b We could not match your number to a client yet."
 
-    # Mark as processed immediately (before API call) to prevent race conditions
-    dedup.mark_processed(MessageSid, phone)
+    # Store with reply for deterministic dedup
+    dedup.mark_processed(req.message_id, req.from_number, reply)
+    logger.info(f"WhatsApp internal: id={req.message_id} from={req.from_number} reply_len={len(reply)}")
 
-    # Look up client by phone
-    reply_text = ""
-    match_count = "n/a"
-    try:
-        if not billing_client.configured:
-            reply_text = "Hi \U0001f44b"
-        else:
-            data = billing_client.client_by_phone(phone)
-            clients = data.get("clients", []) if data.get("success") else []
-            match_count = len(clients)
-
-            if len(clients) == 1:
-                name = clients[0].get("fullname", "")
-                reply_text = f"Hi {name} \U0001f44b"
-            elif len(clients) == 0:
-                reply_text = "Hi \U0001f44b We could not match your number to a client yet."
-            else:
-                reply_text = "Hi \U0001f44b We found more than one client for this number. Please contact support."
-
-        logger.info(f"WhatsApp inbound: sid={MessageSid} matched={match_count}")
-    except Exception as e:
-        logger.error(f"WhatsApp inbound: sid={MessageSid} billing lookup error: {e}")
-        reply_text = "Hi \U0001f44b"
-
-    return Response(content=twiml_reply(reply_text), media_type="application/xml")
+    return {"success": True, "reply": reply}
