@@ -75,7 +75,7 @@ def format_wa_reply(result: ActionResult, client_name: str = "") -> str:
 
 def _format_balance(data: dict, first_name: str) -> str:
     balance = data.get("account_balance", 0)
-    outstanding = data.get("outstanding_invoice_balance", 0)
+    outstanding = data.get("outstanding_invoice_total", 0)
     unpaid_count = data.get("unpaid_invoice_count", 0)
     name_part = f"{first_name}, your" if first_name else "Your"
 
@@ -115,8 +115,8 @@ def _format_summary(data: dict) -> str:
     services = data.get("services", {})
 
     name = client.get("fullname", "")
-    balance = client.get("account_balance", 0)
-    outstanding = billing.get("outstanding_balance", 0)
+    balance = billing.get("account_balance", 0)
+    outstanding = billing.get("outstanding_invoice_total", 0)
     pkg = services.get("main_package")
 
     lines = [f"*Account summary for {name}*"]

@@ -129,7 +129,7 @@ def _format_single_client(c: dict) -> str:
 def _format_client_balance(data: dict) -> str:
     name = data.get("fullname", "Unknown")
     balance = data.get("account_balance", 0)
-    outstanding = data.get("outstanding_invoice_balance", 0)
+    outstanding = data.get("outstanding_invoice_total", 0)
     unpaid_count = data.get("unpaid_invoice_count", 0)
     status = data.get("status", "")
 
@@ -176,7 +176,6 @@ def _format_client_summary(data: dict) -> str:
     status = client.get("status", "")
     email = client.get("email", "")
     phone = client.get("phone") or client.get("mobile_number", "")
-    balance = client.get("account_balance", 0)
     reseller = client.get("reseller_name", "")
     payment_method = client.get("payment_method", "")
 
@@ -201,7 +200,8 @@ def _format_client_summary(data: dict) -> str:
         lines.append(f"  Payment method: {payment_method}")
 
     # Billing
-    outstanding = billing.get("outstanding_balance", 0)
+    balance = billing.get("account_balance", 0)
+    outstanding = billing.get("outstanding_invoice_total", 0)
     unpaid_count = billing.get("unpaid_invoice_count", 0)
     lines.append("")
     lines.append("Billing:")
