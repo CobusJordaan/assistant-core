@@ -74,6 +74,17 @@ DO flag these as genuine problems:
 
 When assessing allocation order, always check: are there older unpaid/overdue invoices that were skipped? If the account has NO older unpaid invoices, then allocating to the current invoice is perfectly correct — do not flag this.
 
+PROPOSED ALLOCATION PLAN:
+After reviewing the current allocations, produce a proposed_allocations list showing how each payment SHOULD ideally be allocated.
+- Use the payments list and invoices list (not just the allocation_ledger).
+- Apply oldest-invoice-first for unpaid/overdue invoices.
+- If a payment is already correctly allocated, you may still include it marked as correct.
+- Only include payments that have an amount > 0.
+- For each payment, list which invoice(s) it should be applied to and how much.
+- If a payment fully covers one invoice, allocate it all there. If it exceeds one invoice, cascade to the next oldest.
+- If there are no outstanding invoices to allocate to, set suggested_invoices to [] and note "No outstanding invoices".
+- Round amounts to 2 decimal places.
+
 YOU MUST respond with ONLY a valid JSON object — no markdown, no preamble, no text outside the JSON.
 
 Required JSON structure:
@@ -83,6 +94,18 @@ Required JSON structure:
   "summary": "2-4 sentence plain-English account overview including payment allocation quality",
   "key_findings": [{"severity": "info" or "warning" or "critical", "title": "...", "detail": "..."}],
   "allocation_issues": [{"code": "...", "title": "...", "detail": "...", "reference": "..."}],
+  "proposed_allocations": [
+    {
+      "payment_ref": "...",
+      "payment_date": "YYYY-MM-DD",
+      "payment_amount": number,
+      "currently_correct": true or false,
+      "suggested_invoices": [
+        {"invoice_number": "...", "amount": number, "reason": "..."}
+      ],
+      "note": "optional plain-English note about this payment"
+    }
+  ],
   "debit_order_risk": "Low" or "Medium" or "High" or "N/A",
   "payment_behavior": {"avg_days_to_pay": number or null, "late_payment_count": number, "failed_debit_count": number, "consistency": "Consistent" or "Irregular" or "Deteriorating" or "Improving"},
   "recommendations": [{"priority": "high" or "medium" or "low", "action": "..."}],
