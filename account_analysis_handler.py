@@ -61,19 +61,29 @@ RULES:
 ALLOCATION ANALYSIS FOCUS:
 The allocation_ledger contains rows where each row = one payment applied to one invoice.
 
+AMOUNT MATCHING RULE — THIS IS THE MOST IMPORTANT RULE:
+When a payment amount exactly matches (or is within R1 of) an invoice's total or balance, this is VERY STRONG evidence that the customer intentionally paid that specific invoice — regardless of whether older invoices exist.
+Example: Invoice dated 2026-04-01 for R500. Payment received 2026-04-05 for R500. This payment is CLEARLY for that invoice. Do NOT flag this as an allocation order problem even if older invoices exist.
+Apply this reasoning before any other allocation checks.
+
+INVOICE SKIPPING IS NORMAL:
+Customers skip invoices for legitimate reasons — they may dispute an older invoice, have an arrangement with the business, or simply pay the bill they just received. A newer invoice being paid while an older one is outstanding is NOT automatically a problem.
+
 IMPORTANT — DO NOT flag these as problems:
-- A payment allocated to a recent invoice that was issued around the same time as the payment. This is NORMAL — a customer paying their current month's invoice is correct behaviour.
-- A debit order or EFT applied to the invoice it was raised for, even if that invoice is "newer". Monthly recurring billing will always look like this.
+- A payment that matches (within R1) the total or balance of the invoice it was allocated to. This is an intentional payment for that invoice.
+- A payment allocated to a recent invoice issued around the same time as the payment. This is standard monthly billing behaviour.
+- A debit order or recurring EFT matching the current month's invoice.
+- Any case where older invoices exist but the payment clearly matches the newer invoice by amount.
 
-DO flag these as genuine problems:
-1. A payment was allocated to a newer invoice while an OLDER invoice remains UNPAID and OVERDUE (e.g. 30+ days past due). The older debt should have been settled first.
-2. Invoices receiving more total allocation than their invoice total (over-allocation).
-3. A payment split across 3+ invoices without fully clearing any single invoice (inefficient — suggests manual error).
-4. The same payment allocated to the same invoice more than once (duplicate allocation).
-5. Payments that pre-date the invoice they are allocated to by more than a few days (possibly a data entry error).
-6. Do the deterministic_findings flag any specific allocation problems you should explain in plain English?
+DO flag these as genuine problems only when ALL of these are true:
+1. A payment does NOT match the newer invoice by amount, AND an older invoice has been overdue 60+ days, AND the payment could have cleared the older debt. This suggests genuinely incorrect allocation.
+2. Invoices receiving more total allocation than their invoice total (over-allocation) — always flag this.
+3. A payment split across 3+ invoices without fully clearing any single invoice — flag only if it looks like a manual error, not a deliberate partial payment arrangement.
+4. The same payment allocated to the same invoice more than once (duplicate allocation) — always flag.
+5. Payments dated more than 7 days before the invoice they are allocated to — possible data entry error.
+6. Explain any problems flagged in deterministic_findings in plain English.
 
-When assessing allocation order, always check: are there older unpaid/overdue invoices that were skipped? If the account has NO older unpaid invoices, then allocating to the current invoice is perfectly correct — do not flag this.
+When assessing allocation order: first check if the payment amount matches the invoice. If yes, it is correct. Only if the amount does NOT match AND older debt is being ignored should you flag an allocation order issue.
 
 PROPOSED ALLOCATION PLAN:
 Use ONLY the allocation_focus block (not the full invoices/payments lists) to produce proposed_allocations.
@@ -81,7 +91,8 @@ allocation_focus.unpaid_invoices_oldest_first = invoices that still have a balan
 allocation_focus.payments_with_unallocated_amount = payments that have money not yet applied to an invoice.
 Rules:
 - Work through payments_with_unallocated_amount oldest payment first.
-- For each payment, allocate its unallocated_amount against unpaid_invoices_oldest_first, clearing the oldest invoice first before moving to the next.
+- FIRST check: does the payment amount (within R1) exactly match any single unpaid invoice's balance? If yes, allocate it to that invoice — this takes priority over oldest-first ordering. Set reason to "Exact amount match".
+- If no exact match, allocate the payment against unpaid_invoices_oldest_first, clearing the oldest invoice first before moving to the next.
 - If a payment's unallocated_amount exactly or more than covers an invoice balance, mark that invoice fully paid and carry the remainder to the next oldest.
 - If there are no unpaid invoices, set suggested_invoices to [] and set note to "No outstanding invoices — payment is a credit or overpayment".
 - Round all amounts to 2 decimal places.
