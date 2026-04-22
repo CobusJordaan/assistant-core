@@ -14,9 +14,10 @@ import json
 import logging
 from typing import Any
 
+import asyncio
 import httpx
 from fastapi import APIRouter, Header, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 logger = logging.getLogger("account-analysis")
@@ -188,24 +189,11 @@ def _extract_json(text: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Analysis endpoint
+# Shared context builder
 # ---------------------------------------------------------------------------
 
-@router.post("/internal/account-analysis")
-async def account_analysis(
-    req: AccountAnalysisRequest,
-    request: Request,
-    authorization: str | None = Header(None),
-):
-    """Generate AI account analysis for a billing client using local Ollama."""
-    from app import _check_internal_token
-    if not _check_internal_token(authorization):
-        return JSONResponse(status_code=401, content={"success": False, "error": "Unauthorized"})
-
-    # Build context payload.
-    # Keep general slices small so the prompt stays within the model's context window.
-    # Add a focused allocation_focus block for the proposed_allocations section so
-    # the model only needs to reason about unpaid invoices and unallocated payments.
+def _build_context_and_message(req: AccountAnalysisRequest) -> tuple[dict, str]:
+    """Build the context dict and user message from a request. Shared by both endpoints."""
     unpaid_invoices = [
         i for i in req.invoices
         if i.get("payment_status") in ("unpaid", "partially_paid") and (i.get("balance") or 0) > 0
@@ -225,7 +213,6 @@ async def account_analysis(
         "recent_payments": req.payments[:10],
         "recent_credit_notes": req.credit_notes[:5],
         "allocation_ledger": req.allocation_ledger[:20],
-        # Focused subset for proposed_allocations — only what matters
         "allocation_focus": {
             "unpaid_invoices_oldest_first": sorted(
                 unpaid_invoices, key=lambda i: i.get("due_date") or i.get("invoice_date") or ""
@@ -243,6 +230,25 @@ async def account_analysis(
         "Return your analysis as a JSON object only.\n\n"
         f"Account data:\n{json.dumps(context, indent=2, default=str)}"
     )
+    return context, user_message
+
+
+# ---------------------------------------------------------------------------
+# Analysis endpoint (non-streaming — kept for compatibility)
+# ---------------------------------------------------------------------------
+
+@router.post("/internal/account-analysis")
+async def account_analysis(
+    req: AccountAnalysisRequest,
+    request: Request,
+    authorization: str | None = Header(None),
+):
+    """Generate AI account analysis for a billing client using local Ollama."""
+    from app import _check_internal_token
+    if not _check_internal_token(authorization):
+        return JSONResponse(status_code=401, content={"success": False, "error": "Unauthorized"})
+
+    _, user_message = _build_context_and_message(req)
 
     try:
         raw_text = await _call_ollama(SYSTEM_PROMPT, user_message)
@@ -286,3 +292,92 @@ async def account_analysis(
             status_code=500,
             content={"success": False, "error": "Internal error generating analysis"},
         )
+
+
+# ---------------------------------------------------------------------------
+# Streaming analysis endpoint
+# ---------------------------------------------------------------------------
+
+@router.post("/internal/account-analysis/stream")
+async def account_analysis_stream(
+    req: AccountAnalysisRequest,
+    request: Request,
+    authorization: str | None = Header(None),
+):
+    """Stream AI account analysis token-by-token as Server-Sent Events.
+
+    Events emitted:
+      data: {"chunk": "<token>"}           — raw token from the model
+      data: {"done": true, "analysis": {}} — final parsed JSON when complete
+      data: {"done": true, "error": "..."}  — if parsing or model error
+    """
+    from app import _check_internal_token
+    if not _check_internal_token(authorization):
+        return JSONResponse(status_code=401, content={"success": False, "error": "Unauthorized"})
+
+    _, user_message = _build_context_and_message(req)
+
+    async def generate():
+        full_text = ""
+        try:
+            async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+                async with client.stream(
+                    "POST",
+                    f"{OLLAMA_URL}/api/chat",
+                    json={
+                        "model": ANALYSIS_MODEL,
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": user_message},
+                        ],
+                        "stream": True,
+                        "options": {"temperature": 0.1, "num_predict": 4096},
+                    },
+                ) as resp:
+                    if resp.status_code == 404:
+                        available = await _list_ollama_models()
+                        hint = f" Available: {', '.join(available)}" if available else ""
+                        yield f"data: {json.dumps({'done': True, 'error': f'Model not found.{hint}'})}\n\n"
+                        return
+
+                    async for line in resp.aiter_lines():
+                        if not line:
+                            continue
+                        try:
+                            chunk_data = json.loads(line)
+                            token = chunk_data.get("message", {}).get("content", "")
+                            if token:
+                                full_text += token
+                                yield f"data: {json.dumps({'chunk': token})}\n\n"
+                        except json.JSONDecodeError:
+                            pass
+
+        except httpx.ConnectError:
+            yield f"data: {json.dumps({'done': True, 'error': f'Cannot connect to Ollama at {OLLAMA_URL}.'})}\n\n"
+            return
+        except httpx.TimeoutException:
+            yield f"data: {json.dumps({'done': True, 'error': 'Ollama timed out.'})}\n\n"
+            return
+        except Exception as e:
+            logger.error("Streaming Ollama error: %s", e, exc_info=True)
+            yield f"data: {json.dumps({'done': True, 'error': str(e)})}\n\n"
+            return
+
+        # Parse final JSON from accumulated text
+        try:
+            analysis = _extract_json(full_text)
+            logger.info(
+                "Streaming analysis complete for client %s — status: %s",
+                req.client.get("client_number", "?"),
+                analysis.get("overall_status", "?"),
+            )
+            yield f"data: {json.dumps({'done': True, 'analysis': analysis})}\n\n"
+        except (ValueError, json.JSONDecodeError) as e:
+            logger.error("Failed to parse streamed model JSON: %s", e)
+            yield f"data: {json.dumps({'done': True, 'error': 'Model response was not valid JSON. Try again.'})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
