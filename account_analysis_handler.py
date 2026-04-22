@@ -75,23 +75,49 @@ Required JSON structure:
 # Ollama call
 # ---------------------------------------------------------------------------
 
+async def _list_ollama_models() -> list[str]:
+    """Return list of model names available in Ollama."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"{OLLAMA_URL}/api/tags")
+            if resp.status_code == 200:
+                data = resp.json()
+                return [m["name"] for m in data.get("models", [])]
+    except Exception:
+        pass
+    return []
+
+
 async def _call_ollama(system: str, user_message: str) -> str:
-    """Call local Ollama /api/chat and return the assistant response text."""
-    payload = {
-        "model": ANALYSIS_MODEL,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_message},
-        ],
-        "stream": False,
-        "options": {
-            "temperature": 0.1,   # Low temperature for deterministic, factual output
-            "num_predict": 2048,
-        },
-    }
+    """Call local Ollama /api/chat and return the assistant response text.
+
+    Falls back to /api/generate if /api/chat returns 404 (older Ollama builds).
+    """
+    combined_prompt = f"{system}\n\n{user_message}"
 
     async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
-        resp = await client.post(f"{OLLAMA_URL}/api/chat", json=payload)
+        # Try /api/chat first (Ollama ≥ 0.1.14)
+        chat_payload = {
+            "model": ANALYSIS_MODEL,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_message},
+            ],
+            "stream": False,
+            "options": {"temperature": 0.1, "num_predict": 2048},
+        }
+        resp = await client.post(f"{OLLAMA_URL}/api/chat", json=chat_payload)
+
+        if resp.status_code == 404:
+            # Model not found — log available models to help diagnose
+            available = await _list_ollama_models()
+            hint = f" Available models: {', '.join(available)}" if available else " No models found in Ollama."
+            raise httpx.HTTPStatusError(
+                f"Model '{ANALYSIS_MODEL}' not found in Ollama (404).{hint} "
+                f"Set DEFAULT_MODEL in .env to a valid model name.",
+                request=resp.request, response=resp,
+            )
+
         resp.raise_for_status()
         data = resp.json()
         return data["message"]["content"].strip()
@@ -167,6 +193,12 @@ async def account_analysis(
         return JSONResponse(
             status_code=503,
             content={"success": False, "error": f"Cannot connect to local AI model at {OLLAMA_URL}. Is Ollama running?"},
+        )
+    except httpx.HTTPStatusError as e:
+        logger.error("Ollama HTTP error: %s", e)
+        return JSONResponse(
+            status_code=502,
+            content={"success": False, "error": str(e)},
         )
     except httpx.TimeoutException:
         logger.error("Ollama timed out after %ds", OLLAMA_TIMEOUT)
