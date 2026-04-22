@@ -59,13 +59,20 @@ RULES:
 
 ALLOCATION ANALYSIS FOCUS:
 The allocation_ledger contains rows where each row = one payment applied to one invoice.
-You must check:
-1. Are payments applied to the correct invoices? (oldest debt first is standard practice)
-2. Are any invoices receiving more allocation than their total? (over-allocation)
-3. Are any payments split across many invoices without clearing any? (inefficient allocation)
-4. Do payment dates make sense relative to the invoices they are allocated to?
-5. Are there any invoices that are overdue yet a payment was allocated to a newer invoice instead?
+
+IMPORTANT — DO NOT flag these as problems:
+- A payment allocated to a recent invoice that was issued around the same time as the payment. This is NORMAL — a customer paying their current month's invoice is correct behaviour.
+- A debit order or EFT applied to the invoice it was raised for, even if that invoice is "newer". Monthly recurring billing will always look like this.
+
+DO flag these as genuine problems:
+1. A payment was allocated to a newer invoice while an OLDER invoice remains UNPAID and OVERDUE (e.g. 30+ days past due). The older debt should have been settled first.
+2. Invoices receiving more total allocation than their invoice total (over-allocation).
+3. A payment split across 3+ invoices without fully clearing any single invoice (inefficient — suggests manual error).
+4. The same payment allocated to the same invoice more than once (duplicate allocation).
+5. Payments that pre-date the invoice they are allocated to by more than a few days (possibly a data entry error).
 6. Do the deterministic_findings flag any specific allocation problems you should explain in plain English?
+
+When assessing allocation order, always check: are there older unpaid/overdue invoices that were skipped? If the account has NO older unpaid invoices, then allocating to the current invoice is perfectly correct — do not flag this.
 
 YOU MUST respond with ONLY a valid JSON object — no markdown, no preamble, no text outside the JSON.
 
