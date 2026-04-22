@@ -132,6 +132,10 @@ app = FastAPI(title="assistant-core", version="1.0.0", lifespan=lifespan)
 # Mount memory routes
 app.include_router(memory_router)
 
+# Mount account analysis routes
+from account_analysis_handler import router as analysis_router
+app.include_router(analysis_router)
+
 
 # ---------------------------------------------------------------------------
 # Request/response models
