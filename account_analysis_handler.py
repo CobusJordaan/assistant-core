@@ -22,7 +22,7 @@ from pydantic import BaseModel
 logger = logging.getLogger("account-analysis")
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
-ANALYSIS_MODEL = os.getenv("DEFAULT_MODEL", "llama3.2")
+ANALYSIS_MODEL = os.getenv("DEFAULT_MODEL", "llama3.1:8b")
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
 
 router = APIRouter()
