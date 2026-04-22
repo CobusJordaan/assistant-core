@@ -38,6 +38,7 @@ class AccountAnalysisRequest(BaseModel):
     invoices: list[dict[str, Any]] = []
     payments: list[dict[str, Any]] = []
     credit_notes: list[dict[str, Any]] = []
+    allocation_ledger: list[dict[str, Any]] = []
     deterministic_findings: list[dict[str, Any]] = []
     risk_score: int = 0
     analysis_period_months: int = 12
@@ -47,13 +48,24 @@ class AccountAnalysisRequest(BaseModel):
 # Prompt
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are an expert accounting assistant. Analyze the client's billing account data and produce a clear, professional, actionable analysis for accounting staff.
+SYSTEM_PROMPT = """You are an expert accounting assistant reviewing a client's billing account. Produce a clear, professional, actionable analysis for accounting staff.
 
 RULES:
 - Only analyze data provided. Do not invent or assume transactions.
-- Reference actual figures, invoice numbers, or dates from the data.
+- Reference actual figures, invoice numbers, payment references, and dates from the data.
+- Pay special attention to the allocation_ledger — this shows exactly which payment was applied to which invoice.
 - Be concise but thorough. This is for accounting staff, not the client.
 - Where data is incomplete, say so in confidence_notes.
+
+ALLOCATION ANALYSIS FOCUS:
+The allocation_ledger contains rows where each row = one payment applied to one invoice.
+You must check:
+1. Are payments applied to the correct invoices? (oldest debt first is standard practice)
+2. Are any invoices receiving more allocation than their total? (over-allocation)
+3. Are any payments split across many invoices without clearing any? (inefficient allocation)
+4. Do payment dates make sense relative to the invoices they are allocated to?
+5. Are there any invoices that are overdue yet a payment was allocated to a newer invoice instead?
+6. Do the deterministic_findings flag any specific allocation problems you should explain in plain English?
 
 YOU MUST respond with ONLY a valid JSON object — no markdown, no preamble, no text outside the JSON.
 
@@ -61,7 +73,7 @@ Required JSON structure:
 {
   "overall_status": "Healthy" or "Needs Attention" or "High Risk",
   "payer_profile": "Good payer" or "Mostly reliable" or "Slow payer" or "Problematic payer",
-  "summary": "2-4 sentence plain-English account overview",
+  "summary": "2-4 sentence plain-English account overview including payment allocation quality",
   "key_findings": [{"severity": "info" or "warning" or "critical", "title": "...", "detail": "..."}],
   "allocation_issues": [{"code": "...", "title": "...", "detail": "...", "reference": "..."}],
   "debit_order_risk": "Low" or "Medium" or "High" or "N/A",
@@ -159,7 +171,8 @@ async def account_analysis(
     if not _check_internal_token(authorization):
         return JSONResponse(status_code=401, content={"success": False, "error": "Unauthorized"})
 
-    # Build context payload — keep it concise for local model context window
+    # Build context payload — allocation_ledger is the key new addition
+    # Limit ledger rows to keep prompt within model context window
     context = {
         "analysis_period_months": req.analysis_period_months,
         "client": req.client,
@@ -169,10 +182,13 @@ async def account_analysis(
         "recent_invoices": req.invoices[:15],
         "recent_payments": req.payments[:15],
         "recent_credit_notes": req.credit_notes[:8],
+        "allocation_ledger": req.allocation_ledger[:40],  # each payment→invoice link
     }
 
     user_message = (
-        "Analyze this billing account and return your analysis as a JSON object only.\n\n"
+        "Analyze this billing account — pay special attention to the allocation_ledger "
+        "which shows exactly how each payment was applied to invoices. "
+        "Return your analysis as a JSON object only.\n\n"
         f"Account data:\n{json.dumps(context, indent=2, default=str)}"
     )
 
