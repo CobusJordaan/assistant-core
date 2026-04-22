@@ -23,7 +23,7 @@ logger = logging.getLogger("account-analysis")
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 ANALYSIS_MODEL = os.getenv("DEFAULT_MODEL", "llama3.1:8b")
-OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
+OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "300"))
 
 router = APIRouter()
 
@@ -75,15 +75,16 @@ DO flag these as genuine problems:
 When assessing allocation order, always check: are there older unpaid/overdue invoices that were skipped? If the account has NO older unpaid invoices, then allocating to the current invoice is perfectly correct — do not flag this.
 
 PROPOSED ALLOCATION PLAN:
-After reviewing the current allocations, produce a proposed_allocations list showing how each payment SHOULD ideally be allocated.
-- Use the payments list and invoices list (not just the allocation_ledger).
-- Apply oldest-invoice-first for unpaid/overdue invoices.
-- If a payment is already correctly allocated, you may still include it marked as correct.
-- Only include payments that have an amount > 0.
-- For each payment, list which invoice(s) it should be applied to and how much.
-- If a payment fully covers one invoice, allocate it all there. If it exceeds one invoice, cascade to the next oldest.
-- If there are no outstanding invoices to allocate to, set suggested_invoices to [] and note "No outstanding invoices".
-- Round amounts to 2 decimal places.
+Use ONLY the allocation_focus block (not the full invoices/payments lists) to produce proposed_allocations.
+allocation_focus.unpaid_invoices_oldest_first = invoices that still have a balance, sorted oldest due date first.
+allocation_focus.payments_with_unallocated_amount = payments that have money not yet applied to an invoice.
+Rules:
+- Work through payments_with_unallocated_amount oldest payment first.
+- For each payment, allocate its unallocated_amount against unpaid_invoices_oldest_first, clearing the oldest invoice first before moving to the next.
+- If a payment's unallocated_amount exactly or more than covers an invoice balance, mark that invoice fully paid and carry the remainder to the next oldest.
+- If there are no unpaid invoices, set suggested_invoices to [] and set note to "No outstanding invoices — payment is a credit or overpayment".
+- Round all amounts to 2 decimal places.
+- If allocation_focus has no payments or no unpaid invoices, return proposed_allocations as [].
 
 YOU MUST respond with ONLY a valid JSON object — no markdown, no preamble, no text outside the JSON.
 
@@ -146,7 +147,7 @@ async def _call_ollama(system: str, user_message: str) -> str:
                 {"role": "user", "content": user_message},
             ],
             "stream": False,
-            "options": {"temperature": 0.1, "num_predict": 2048},
+            "options": {"temperature": 0.1, "num_predict": 4096},
         }
         resp = await client.post(f"{OLLAMA_URL}/api/chat", json=chat_payload)
 
@@ -201,23 +202,44 @@ async def account_analysis(
     if not _check_internal_token(authorization):
         return JSONResponse(status_code=401, content={"success": False, "error": "Unauthorized"})
 
-    # Build context payload — allocation_ledger is the key new addition
-    # Limit ledger rows to keep prompt within model context window
+    # Build context payload.
+    # Keep general slices small so the prompt stays within the model's context window.
+    # Add a focused allocation_focus block for the proposed_allocations section so
+    # the model only needs to reason about unpaid invoices and unallocated payments.
+    unpaid_invoices = [
+        i for i in req.invoices
+        if i.get("payment_status") in ("unpaid", "partially_paid") and (i.get("balance") or 0) > 0
+    ]
+    payments_needing_allocation = [
+        p for p in req.payments
+        if (p.get("unallocated_amount") or 0) > 0
+    ]
+
     context = {
         "analysis_period_months": req.analysis_period_months,
         "client": req.client,
         "financial_summary": req.financial_summary,
         "risk_score": req.risk_score,
         "deterministic_findings": req.deterministic_findings,
-        "recent_invoices": req.invoices[:15],
-        "recent_payments": req.payments[:15],
-        "recent_credit_notes": req.credit_notes[:8],
-        "allocation_ledger": req.allocation_ledger[:40],  # each payment→invoice link
+        "recent_invoices": req.invoices[:10],
+        "recent_payments": req.payments[:10],
+        "recent_credit_notes": req.credit_notes[:5],
+        "allocation_ledger": req.allocation_ledger[:20],
+        # Focused subset for proposed_allocations — only what matters
+        "allocation_focus": {
+            "unpaid_invoices_oldest_first": sorted(
+                unpaid_invoices, key=lambda i: i.get("due_date") or i.get("invoice_date") or ""
+            )[:15],
+            "payments_with_unallocated_amount": sorted(
+                payments_needing_allocation, key=lambda p: p.get("payment_date") or ""
+            )[:15],
+        },
     }
 
     user_message = (
-        "Analyze this billing account — pay special attention to the allocation_ledger "
-        "which shows exactly how each payment was applied to invoices. "
+        "Analyze this billing account. "
+        "Use the allocation_ledger to review how payments were applied. "
+        "Use the allocation_focus block to build the proposed_allocations plan. "
         "Return your analysis as a JSON object only.\n\n"
         f"Account data:\n{json.dumps(context, indent=2, default=str)}"
     )
