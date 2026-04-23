@@ -150,7 +150,8 @@ async def _call_ollama(system: str, user_message: str) -> str:
     """
     combined_prompt = f"{system}\n\n{user_message}"
 
-    async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+    timeouts = httpx.Timeout(connect=10.0, read=float(OLLAMA_TIMEOUT), write=30.0, pool=10.0)
+    async with httpx.AsyncClient(timeout=timeouts) as client:
         # Try /api/chat first (Ollama ≥ 0.1.14)
         chat_payload = {
             "model": ANALYSIS_MODEL,
@@ -331,7 +332,11 @@ async def account_analysis_stream(
     async def generate():
         full_text = ""
         try:
-            async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+            # Use separate connect / read / write / pool timeouts so that
+            # a long-running generation doesn't hit a total-request cap.
+            # read=600 allows up to 600s between chunks from Ollama.
+            timeouts = httpx.Timeout(connect=10.0, read=600.0, write=30.0, pool=10.0)
+            async with httpx.AsyncClient(timeout=timeouts) as client:
                 async with client.stream(
                     "POST",
                     f"{OLLAMA_URL}/api/chat",
