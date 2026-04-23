@@ -331,6 +331,20 @@ async def account_analysis_stream(
 
     async def generate():
         full_text = ""
+        KEEPALIVE_INTERVAL = 15  # seconds — must be < nginx proxy_read_timeout (default 60s)
+
+        async def _iter_with_keepalive(aiter):
+            """Wrap async iterator with keepalive heartbeats to prevent proxy timeouts."""
+            ait = aiter.__aiter__()
+            while True:
+                try:
+                    item = await asyncio.wait_for(ait.__anext__(), timeout=KEEPALIVE_INTERVAL)
+                    yield item
+                except asyncio.TimeoutError:
+                    yield None  # signal to send keepalive
+                except StopAsyncIteration:
+                    break
+
         try:
             # Use separate connect / read / write / pool timeouts so that
             # a long-running generation doesn't hit a total-request cap.
@@ -356,7 +370,12 @@ async def account_analysis_stream(
                         yield f"data: {json.dumps({'done': True, 'error': f'Model not found.{hint}'})}\n\n"
                         return
 
-                    async for line in resp.aiter_lines():
+                    async for line in _iter_with_keepalive(resp.aiter_lines()):
+                        if line is None:
+                            # SSE comment — browsers ignore it, but it keeps
+                            # nginx / proxies from closing the connection.
+                            yield ": keepalive\n\n"
+                            continue
                         if not line:
                             continue
                         try:
