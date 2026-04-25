@@ -30,6 +30,9 @@
             {% if container.uptime %}
             <div class="stat"><label>Uptime</label><span class="val">{{ container.uptime }}</span></div>
             {% endif %}
+            {% if owui_version %}
+            <div class="stat"><label>Version</label><span class="val">{{ owui_version }}</span></div>
+            {% endif %}
             {% if container.image %}
             <div class="stat"><label>Image</label><span class="val" style="font-size:0.8rem;">{{ container.image }}</span></div>
             {% endif %}
@@ -57,34 +60,62 @@
         </div>
     </div>
 
-    <!-- Access -->
+    <!-- Updates & Access -->
     <div class="card">
         <div class="card-header">
             <div class="card-header-icon metric-icon-blue">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             </div>
-            <h3>Access</h3>
+            <h3>Updates</h3>
+            <span class="card-badge badge-blue" id="update-status-badge" style="display:none">Unknown</span>
         </div>
-        <div class="stat"><label>Local URL</label><span class="val" style="font-size:0.82rem;">{{ webui_url }}</span></div>
-        <div style="margin-top: 14px;">
-            <a href="{{ webui_url }}" target="_blank" rel="noopener" class="btn btn-primary btn-full">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                Open WebUI
-            </a>
+        <div id="update-status-content">
+            <div class="stat"><label>Update Status</label><span class="val" style="color:var(--muted)" id="update-check-text">Not checked</span></div>
+            <div class="stat"><label>Docker Compose</label><span class="val">{{ 'Available' if compose_available else 'Not found' }}</span></div>
+        </div>
+        <div style="margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn btn-ghost btn-sm" id="btn-check-update" onclick="checkOwuiUpdate()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <span id="check-update-label">Check for Updates</span>
+            </button>
+            {% if session_role in ('owner', 'admin') %}
+            <button class="btn btn-ghost btn-sm" id="btn-backup-owui" onclick="backupOwui()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span id="backup-label">Backup Data</span>
+            </button>
+            <button class="btn btn-primary btn-sm" id="btn-update-owui" onclick="updateOwui()" style="display:none">
+                <span class="spinner spinner-hidden" id="update-owui-spinner"></span>
+                <span id="update-owui-label">Update Open WebUI</span>
+            </button>
+            {% endif %}
         </div>
 
-        <!-- Security warning -->
-        <div style="margin-top: 16px; padding: 12px 14px; background: var(--red-dim); border: 1px solid rgba(239,68,68,0.12); border-radius: 8px;">
-            <div style="display: flex; align-items: flex-start; gap: 10px;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                <div>
-                    <div style="font-weight: 600; color: var(--red); font-size: 0.82rem; margin-bottom: 2px;">Security Warning</div>
-                    <div style="color: var(--text-secondary); font-size: 0.78rem; line-height: 1.5;">Do not expose this admin dashboard to the public internet. If you want to share Open WebUI with others, expose only Open WebUI through Nginx/HTTPS — never this admin panel.</div>
-                </div>
+        <!-- Access link -->
+        <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);">
+            <div class="stat"><label>Local URL</label><span class="val" style="font-size:0.82rem;">{{ webui_url }}</span></div>
+            <div style="margin-top: 10px;">
+                <a href="{{ webui_url }}" target="_blank" rel="noopener" class="btn btn-primary btn-full">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    Open WebUI
+                </a>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Update progress (shown during update) -->
+<div class="card" id="update-progress-card" style="display:none; margin-top:20px;">
+    <div class="card-header">
+        <div class="card-header-icon metric-icon-blue">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        </div>
+        <h3>Update Progress</h3>
+    </div>
+    <div id="update-progress-content" style="font-size:0.85rem; color:var(--text-secondary);"></div>
+</div>
+
+<!-- Alert area -->
+<div id="owui-alert" style="margin-top: 20px;"></div>
 
 <!-- Logs output (hidden until requested) -->
 <div class="card" id="owui-logs-card" style="display: none; margin-top: 20px;">
@@ -174,6 +205,17 @@
     </div>
 </div>
 
+<!-- Security Warning -->
+<div style="margin-top: 20px; padding: 12px 14px; background: var(--red-dim); border: 1px solid rgba(239,68,68,0.12); border-radius: 8px;">
+    <div style="display: flex; align-items: flex-start; gap: 10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div>
+            <div style="font-weight: 600; color: var(--red); font-size: 0.82rem; margin-bottom: 2px;">Security Warning</div>
+            <div style="color: var(--text-secondary); font-size: 0.78rem; line-height: 1.5;">Do not expose this admin dashboard to the public internet. If you want to share Open WebUI with others, expose only Open WebUI through Nginx/HTTPS — never this admin panel.</div>
+        </div>
+    </div>
+</div>
+
 <style>
 .checklist-item {
     display: flex;
@@ -198,6 +240,8 @@
 {% endblock %}
 
 {% block scripts %}
+const csrfToken = '{{ csrf_token }}';
+
 async function doOwuiAction(event, url, extraData, form) {
     event.preventDefault();
     const btn = form.querySelector('button');
@@ -216,16 +260,15 @@ async function doOwuiAction(event, url, extraData, form) {
     try {
         const r = await fetch(url, { method: 'POST', body: body });
         const result = await r.json();
-        if (!result.success) alert(result.message || 'Action failed');
+        if (!result.success) showOwuiAlert(result.message || 'Action failed', 'error');
     } catch (e) {
-        alert('Request failed: ' + e.message);
+        showOwuiAlert('Request failed: ' + e.message, 'error');
     } finally {
         spinner.classList.add('spinner-hidden');
         if (label) label.textContent = 'Restart';
         btn.disabled = false;
     }
 
-    /* Refresh status after 3s */
     setTimeout(refreshOwuiStatus, 3000);
     return false;
 }
@@ -244,9 +287,6 @@ async function refreshOwuiStatus() {
         if (c.image) h += `<div class="stat"><label>Image</label><span class="val" style="font-size:0.8rem;">${c.image}</span></div>`;
         if (c.container_id) h += `<div class="stat"><label>Container ID</label><span class="val"><span class="git-hash">${c.container_id}</span></span></div>`;
         el.innerHTML = h;
-
-        /* Update badge */
-        const badge = document.querySelector('#card-services .card-badge, .card-header .card-badge');
     } catch (e) {
         console.error('Failed to refresh Open WebUI status:', e);
     }
@@ -296,6 +336,152 @@ async function checkOwuiHealth() {
         label.textContent = 'Check Health';
         label.style.color = '';
     }, 5000);
+}
+
+async function checkOwuiUpdate() {
+    const label = document.getElementById('check-update-label');
+    const btn = document.getElementById('btn-check-update');
+    const badge = document.getElementById('update-status-badge');
+    const text = document.getElementById('update-check-text');
+
+    btn.disabled = true;
+    label.textContent = 'Checking...';
+
+    const form = new FormData();
+    form.append('csrf_token', csrfToken);
+
+    try {
+        const r = await fetch('/admin/api/open-webui/check-update', { method: 'POST', body: form });
+        if (r.status === 401) { window.location.href = '/admin/login'; return; }
+        const data = await r.json();
+
+        if (data.error) {
+            text.textContent = data.error;
+            text.style.color = 'var(--red)';
+            badge.style.display = 'none';
+        } else if (data.update_available) {
+            text.innerHTML = `Update available<br><span style="font-size:0.78rem;color:var(--muted)">Current: ${data.current_image_id} → Latest: ${data.latest_image_id}</span>`;
+            text.style.color = 'var(--orange)';
+            badge.textContent = 'Update Available';
+            badge.className = 'card-badge badge-orange';
+            badge.style.display = '';
+            /* Show update button */
+            const updateBtn = document.getElementById('btn-update-owui');
+            if (updateBtn) updateBtn.style.display = '';
+        } else {
+            text.textContent = 'Up to date';
+            text.style.color = 'var(--green)';
+            badge.textContent = 'Up to Date';
+            badge.className = 'card-badge badge-green';
+            badge.style.display = '';
+            const updateBtn = document.getElementById('btn-update-owui');
+            if (updateBtn) updateBtn.style.display = 'none';
+        }
+
+        if (data.current_version) {
+            const statusEl = document.getElementById('owui-status');
+            const versionStat = statusEl.querySelector('.stat label');
+        }
+    } catch (e) {
+        text.textContent = 'Check failed: ' + e.message;
+        text.style.color = 'var(--red)';
+    } finally {
+        label.textContent = 'Check for Updates';
+        btn.disabled = false;
+    }
+}
+
+async function backupOwui() {
+    const label = document.getElementById('backup-label');
+    const btn = document.getElementById('btn-backup-owui');
+    btn.disabled = true;
+    label.textContent = 'Backing up...';
+
+    const form = new FormData();
+    form.append('csrf_token', csrfToken);
+
+    try {
+        const r = await fetch('/admin/api/open-webui/backup', { method: 'POST', body: form });
+        const data = await r.json();
+        if (data.success) {
+            showOwuiAlert(`Backup created: ${data.path} (${data.size_kb} KB)`, 'success');
+        } else {
+            showOwuiAlert(data.message || 'Backup failed', 'error');
+        }
+    } catch (e) {
+        showOwuiAlert('Backup error: ' + e.message, 'error');
+    } finally {
+        label.textContent = 'Backup Data';
+        btn.disabled = false;
+    }
+}
+
+async function updateOwui() {
+    if (!confirm('This will update and restart Open WebUI. Users may be disconnected. Continue?')) return;
+
+    const btn = document.getElementById('btn-update-owui');
+    const spinner = document.getElementById('update-owui-spinner');
+    const label = document.getElementById('update-owui-label');
+    const progressCard = document.getElementById('update-progress-card');
+    const progressContent = document.getElementById('update-progress-content');
+
+    btn.disabled = true;
+    spinner.classList.remove('spinner-hidden');
+    label.textContent = 'Updating...';
+    progressCard.style.display = '';
+    progressContent.innerHTML = '<div style="padding:8px 0;">Starting update...</div>';
+
+    const form = new FormData();
+    form.append('csrf_token', csrfToken);
+
+    try {
+        const r = await fetch('/admin/api/open-webui/update', { method: 'POST', body: form });
+        const data = await r.json();
+
+        /* Render steps */
+        if (data.steps && data.steps.length > 0) {
+            let html = '';
+            const stepNames = {
+                pull_image: 'Pull latest image',
+                recreate_container: 'Recreate container',
+                verify: 'Verify container running',
+            };
+            for (const s of data.steps) {
+                const icon = s.status === 'done' ? '<span style="color:var(--green)">&#10003;</span>'
+                    : s.status === 'failed' ? '<span style="color:var(--red)">&#10007;</span>'
+                    : s.status === 'warning' ? '<span style="color:var(--orange)">&#9888;</span>'
+                    : '<span class="spinner" style="width:12px;height:12px;border-width:1px;"></span>';
+                html += `<div style="padding:6px 0; display:flex; align-items:center; gap:10px;">${icon} <span>${stepNames[s.step] || s.step}</span>${s.error ? `<span style="color:var(--red);font-size:0.78rem;margin-left:8px;">${s.error}</span>` : ''}</div>`;
+            }
+            progressContent.innerHTML = html;
+        }
+
+        if (data.success) {
+            showOwuiAlert('Open WebUI updated successfully!', 'success');
+            label.textContent = 'Updated!';
+            /* Refresh status */
+            setTimeout(refreshOwuiStatus, 3000);
+        } else {
+            showOwuiAlert(data.message || 'Update failed', 'error');
+            label.textContent = 'Update Failed';
+        }
+    } catch (e) {
+        showOwuiAlert('Update error: ' + e.message, 'error');
+        label.textContent = 'Update Failed';
+    } finally {
+        spinner.classList.add('spinner-hidden');
+        setTimeout(() => {
+            label.textContent = 'Update Open WebUI';
+            btn.disabled = false;
+        }, 5000);
+    }
+}
+
+function showOwuiAlert(msg, type) {
+    const el = document.getElementById('owui-alert');
+    const cls = type === 'success' ? 'alert-success' : 'alert-error';
+    el.innerHTML = `<div class="${cls}">${msg}</div>`;
+    setTimeout(() => { el.innerHTML = ''; }, 8000);
 }
 
 /* Auto-refresh status every 15s on this page */

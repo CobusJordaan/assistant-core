@@ -255,10 +255,16 @@ async def open_webui_page(request: Request):
     port = detail.get("host_port") or OPEN_WEBUI_PORT
     webui_url = f"http://{OPEN_WEBUI_HOST}:{port}"
 
+    from admin.docker_manager import get_open_webui_version, has_compose_file
+    owui_version = get_open_webui_version()
+
     return templates.TemplateResponse(request, "admin/open-webui.html", {
         "active_page": "open-webui",
         "container": detail,
         "webui_url": webui_url,
+        "owui_version": owui_version,
+        "compose_available": has_compose_file(),
+        "session_role": session.get("role", "admin"),
         "csrf_token": session.get("csrf", ""),
     })
 
@@ -296,6 +302,109 @@ async def api_open_webui_health(request: Request):
             healthy = False
 
     return {"running": detail.get("running", False), "healthy": healthy, "url": url}
+
+
+@router.post("/api/open-webui/check-update")
+async def api_open_webui_check_update(request: Request, csrf_token: str = Form(...)):
+    """Check if a new Open WebUI Docker image is available."""
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    from admin.docker_manager import check_update, get_open_webui_version
+    _audit(request, session, "owui_check_update", result="STARTED")
+
+    result = check_update()
+    result["current_version"] = get_open_webui_version()
+
+    _audit(request, session, "owui_check_update",
+           result="UPDATE_AVAILABLE" if result.get("update_available") else "UP_TO_DATE")
+
+    return result
+
+
+@router.post("/api/open-webui/backup")
+async def api_open_webui_backup(request: Request, csrf_token: str = Form(...)):
+    """Backup Open WebUI data before update."""
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    if not _require_owner(session):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Owner role required"})
+
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    from admin.docker_manager import backup_data
+    result = backup_data(user=session.get("user", "admin"))
+
+    _audit(request, session, "owui_backup",
+           target=result.get("path", ""),
+           result="SUCCESS" if result["success"] else "FAILED")
+
+    return result
+
+
+@router.post("/api/open-webui/update")
+async def api_open_webui_update(request: Request, csrf_token: str = Form(...)):
+    """Update Open WebUI: pull image + recreate container via Compose."""
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    if not _require_owner(session):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Owner role required"})
+
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    from admin.docker_manager import update_open_webui
+
+    _audit(request, session, "owui_update", result="STARTED")
+    result = update_open_webui(user=session.get("user", "admin"))
+    _audit(request, session, "owui_update",
+           result="SUCCESS" if result["success"] else "FAILED",
+           details=str(result.get("steps", [])))
+
+    return result
+
+
+@router.get("/api/open-webui/backups")
+async def api_open_webui_backups(request: Request):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    from admin.docker_manager import list_backups
+    return {"backups": list_backups()}
+
+
+@router.delete("/api/open-webui/backups/{filename}")
+async def api_open_webui_delete_backup(request: Request, filename: str):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    if not _require_owner(session):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Owner role required"})
+
+    csrf_token = request.query_params.get("csrf_token", "")
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    from admin.docker_manager import delete_backup
+    result = delete_backup(filename)
+    if result["success"]:
+        _audit(request, session, "owui_delete_backup", target=filename, result="SUCCESS")
+    return result
 
 
 # ---------------------------------------------------------------------------

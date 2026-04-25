@@ -35,12 +35,14 @@ def mask_sensitive(text: str) -> str:
 ALLOWED_COMMANDS: dict[str, list[str]] = {
     "/bin/systemctl": ["is-active", "status", "restart"],
     "/usr/bin/systemctl": ["is-active", "status", "restart"],
-    "/usr/bin/docker": ["ps", "logs", "restart", "inspect"],
+    "/usr/bin/docker": ["ps", "logs", "restart", "inspect", "pull", "run", "compose"],
     "/usr/bin/journalctl": ["-u", "--no-pager", "-n", "--since"],
     "/usr/bin/nvidia-smi": [],
     "/usr/bin/sensors": [],
-    "/usr/bin/git": ["status", "pull", "log", "rev-parse", "diff", "--porcelain"],
+    "/usr/bin/git": ["status", "pull", "log", "rev-parse", "diff", "--porcelain",
+                     "fetch", "describe", "rev-list"],
     "/usr/bin/sudo": ["/bin/systemctl", "/usr/bin/systemctl"],
+    "/usr/bin/tar": ["-czf"],
 }
 
 
