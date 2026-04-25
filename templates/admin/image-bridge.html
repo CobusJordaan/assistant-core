@@ -128,7 +128,8 @@
             <!-- ADetailer -->
             <div style="margin-top:8px; padding-top:10px; border-top:1px solid var(--border);">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-                    <input type="checkbox" id="cfg-adetailer" name="enable_adetailer" value="true" {{ 'checked' if settings.get('enable_adetailer', 'true') == 'true' else '' }} onchange="this.form.querySelector('[name=enable_adetailer]').value = this.checked ? 'true' : 'false'">
+                    <input type="hidden" name="enable_adetailer" value="{{ 'true' if settings.get('enable_adetailer', 'true') == 'true' else 'false' }}">
+                    <input type="checkbox" id="cfg-adetailer" {{ 'checked' if settings.get('enable_adetailer', 'true') == 'true' else '' }}>
                     <label for="cfg-adetailer" class="form-label" style="margin:0; font-weight:600;">Enable ADetailer</label>
                 </div>
                 <div id="adetailer-fields" style="{{ '' if settings.get('enable_adetailer', 'true') == 'true' else 'display:none;' }}">
@@ -318,6 +319,7 @@ const csrfToken = '{{ csrf_token }}';
 /* ---- ADetailer toggle ---- */
 document.getElementById('cfg-adetailer').addEventListener('change', function() {
     document.getElementById('adetailer-fields').style.display = this.checked ? '' : 'none';
+    document.querySelector('input[type="hidden"][name="enable_adetailer"]').value = this.checked ? 'true' : 'false';
 });
 
 /* ---- Load checkpoints into dropdown ---- */
@@ -526,37 +528,33 @@ async function testForge() {
 
 async function saveIbSettings(event) {
     event.preventDefault();
+    console.log('[IB] saveIbSettings called');
     const form = document.getElementById('ib-settings-form');
     const btn = document.getElementById('btn-save-settings');
     const spinner = document.getElementById('save-spinner');
     const label = document.getElementById('save-label');
-
-    /* Ensure enable_adetailer checkbox value is set correctly */
-    const adCheck = document.getElementById('cfg-adetailer');
-    const hiddenAd = form.querySelector('input[type="hidden"][name="enable_adetailer"]');
-    if (!hiddenAd) {
-        /* Checkbox unchecked won't submit, so set the value */
-        adCheck.value = adCheck.checked ? 'true' : 'false';
-    }
 
     btn.disabled = true;
     spinner.classList.remove('spinner-hidden');
     label.textContent = 'Saving...';
 
     const fd = new FormData(form);
-    /* Ensure enable_adetailer is always sent */
-    if (!fd.has('enable_adetailer')) {
-        fd.set('enable_adetailer', 'false');
-    } else {
-        fd.set('enable_adetailer', adCheck.checked ? 'true' : 'false');
-    }
+    console.log('[IB] FormData entries:', [...fd.entries()].map(([k,v]) => k + '=' + (typeof v === 'string' ? v.substring(0, 30) : v)).join(', '));
 
     try {
         const r = await fetch('/admin/api/image-bridge/settings', {
             method: 'POST',
             body: fd,
         });
+        console.log('[IB] Save response status:', r.status);
+        if (!r.ok) {
+            const txt = await r.text();
+            console.error('[IB] Save error response:', txt);
+            showIbAlert('Save failed (HTTP ' + r.status + '): ' + txt.substring(0, 200), 'error');
+            return false;
+        }
         const data = await r.json();
+        console.log('[IB] Save response:', data);
         if (data.success) {
             showIbAlert('Settings saved', 'success');
             /* Update test generation display fields to reflect saved values */
@@ -567,7 +565,7 @@ async function saveIbSettings(event) {
             document.getElementById('tg-cfg').value = form.querySelector('[name="default_cfg_scale"]').value;
             document.getElementById('tg-width').value = form.querySelector('[name="default_width"]').value;
             document.getElementById('tg-height').value = form.querySelector('[name="default_height"]').value;
-            document.getElementById('tg-adetailer').checked = adCheck.checked;
+            document.getElementById('tg-adetailer').checked = document.getElementById('cfg-adetailer').checked;
         } else {
             showIbAlert(data.message || 'Save failed', 'error');
         }
