@@ -21,7 +21,7 @@ class ImageBridgeConfig:
     default_width: int = 512
     default_height: int = 640
     default_steps: int = 35
-    default_cfg_scale: int = 7
+    default_cfg_scale: float = 7.0
     default_sampler_name: str = "DPM++ 2M SDE"
     default_scheduler: str = "Karras"
     default_model: str = ""
@@ -51,7 +51,7 @@ _SETTING_MAP = {
     "default_width": ("default_width", int),
     "default_height": ("default_height", int),
     "default_steps": ("default_steps", int),
-    "default_cfg_scale": ("default_cfg_scale", int),
+    "default_cfg_scale": ("default_cfg_scale", float),
     "default_sampler_name": ("default_sampler_name", str),
     "default_scheduler": ("default_scheduler", str),
     "default_model": ("default_model", str),

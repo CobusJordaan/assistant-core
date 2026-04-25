@@ -520,7 +520,7 @@ async def api_image_bridge_settings(
         "default_width": ("int", default_width),
         "default_height": ("int", default_height),
         "default_steps": ("int", default_steps),
-        "default_cfg_scale": ("int", default_cfg_scale),
+        "default_cfg_scale": ("string", default_cfg_scale),
         "default_sampler_name": ("string", default_sampler_name),
         "default_scheduler": ("string", default_scheduler),
         "default_model": ("string", default_model),

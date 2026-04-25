@@ -109,7 +109,7 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">CFG Scale</label>
-                    <input type="number" class="form-input" name="default_cfg_scale" value="{{ settings.get('default_cfg_scale', '7') }}">
+                    <input type="number" step="0.1" class="form-input" name="default_cfg_scale" value="{{ settings.get('default_cfg_scale', '7') }}">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Sampler</label>
@@ -254,7 +254,7 @@
             </div>
             <div class="form-group">
                 <label class="form-label">CFG Scale</label>
-                <input type="number" class="form-input" name="cfg_scale" id="tg-cfg" value="{{ settings.get('default_cfg_scale', '7') }}" disabled title="Uses saved config">
+                <input type="number" step="0.1" class="form-input" name="cfg_scale" id="tg-cfg" value="{{ settings.get('default_cfg_scale', '7') }}" disabled title="Uses saved config">
             </div>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
