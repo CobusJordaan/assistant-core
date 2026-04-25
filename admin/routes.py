@@ -23,7 +23,8 @@ from admin.system_info import (
 )
 from admin.git_manager import get_status as git_status, pull as git_pull, get_update_status
 from admin.service_manager import (
-    get_all_statuses, restart_service, restart_container, get_container_detail,
+    get_all_statuses, get_service_status, restart_service, restart_container,
+    get_container_detail,
 )
 
 logger = logging.getLogger("admin.routes")
@@ -418,7 +419,6 @@ async def image_bridge_page(request: Request):
     if not session:
         return RedirectResponse("/admin/login", status_code=302)
 
-    from admin.service_manager import get_service_status
     svc_status = get_service_status("image-bridge")
 
     admin_db = _get_admin_db(request)
@@ -452,7 +452,6 @@ async def api_image_bridge_status(request: Request):
     if not session:
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
-    from admin.service_manager import get_service_status
     svc = get_service_status("image-bridge")
 
     admin_db = _get_admin_db(request)
