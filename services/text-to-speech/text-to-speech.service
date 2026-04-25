@@ -6,10 +6,10 @@ After=network.target
 Type=simple
 User=aicrm
 WorkingDirectory=/opt/ai-assistant/services/assistant-core/services/text-to-speech
-ExecStart=/opt/ai-assistant/services/text-to-speech/venv/bin/uvicorn app:app --host 0.0.0.0 --port 5400
+ExecStart=/opt/ai-assistant/services/assistant-core/services/text-to-speech/venv/bin/uvicorn app:app --host 0.0.0.0 --port 5400
 Restart=always
 RestartSec=5
-Environment=PIPER_DIR=/opt/piper
+Environment=PIPER_DIR=/opt/piper/piper
 Environment=PIPER_MODELS_DIR=/opt/piper/models
 Environment=PIPER_DEFAULT_VOICE=en_US-lessac-medium
 
