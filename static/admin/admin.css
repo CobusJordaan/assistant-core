@@ -1129,14 +1129,7 @@ a { color: var(--blue); text-decoration: none; }
     padding: 24px;
 }
 
-/* Services list */
-.svc-grid {
-    columns: 2;
-    column-gap: 32px;
-}
-.svc-grid .svc-row {
-    break-inside: avoid;
-}
+/* Services list — no special grid needed, vertical stack */
 
 /* Thermal Details — per-core grid */
 .thermal-cores-grid {
@@ -1146,5 +1139,4 @@ a { color: var(--blue); text-decoration: none; }
 }
 @media (max-width: 900px) {
     .thermal-cores-grid { grid-template-columns: 1fr; }
-    .svc-grid { columns: 1; }
 }
