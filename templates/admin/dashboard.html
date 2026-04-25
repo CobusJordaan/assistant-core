@@ -454,9 +454,18 @@ function updateDashboard(data) {
     if (data.databases && data.databases.length > 0) {
         let h = '';
         for (const db of data.databases) h += `<div class="stat"><label>${db.name}</label><span class="val">${db.size_kb} KB</span></div>`;
+        if (data.admin_db_size != null) {
+            const sizeKb = (data.admin_db_size / 1024).toFixed(1);
+            h += `<div class="stat"><label>admin.db</label><span class="val">${sizeKb} KB</span></div>`;
+        }
         document.getElementById('db-content').innerHTML = h;
     } else {
-        document.getElementById('db-content').innerHTML = '<div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">No database files detected</span></div>';
+        let h = '<div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">No database files detected</span></div>';
+        if (data.admin_db_size != null) {
+            const sizeKb = (data.admin_db_size / 1024).toFixed(1);
+            h += `<div class="stat"><label>admin.db</label><span class="val">${sizeKb} KB</span></div>`;
+        }
+        document.getElementById('db-content').innerHTML = h;
     }
 
     /* System */

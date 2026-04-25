@@ -26,6 +26,7 @@ from billing_session import set_client, get_client, clear_client, set_last_looku
 from whatsapp import WhatsAppDedup
 from whatsapp_session import WhatsAppSessionStore
 from whatsapp_handler import handle_whatsapp_message
+from admin.database import AdminDB
 
 # ---------------------------------------------------------------------------
 # Config
@@ -33,6 +34,7 @@ from whatsapp_handler import handle_whatsapp_message
 
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "assistant-core")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "memory.db")
+ADMIN_DB_PATH = os.getenv("ADMIN_DB_PATH", "/opt/ai-assistant/data/admin.db")
 ASSISTANT_CORE_API_TOKEN = os.getenv("ASSISTANT_CORE_API_TOKEN", "").strip()
 
 logger = logging.getLogger("assistant-core")
@@ -113,12 +115,17 @@ async def lifespan(application: FastAPI):
     wa_sessions.initialize()
     application.state.wa_sessions = wa_sessions
 
+    admin_db = AdminDB(ADMIN_DB_PATH)
+    admin_db.initialize()
+    application.state.admin_db = admin_db
+
     _register_billing_tools()
     logger.info(f"assistant-core started — {len(list_tools())} tools loaded")
 
     yield
 
     # Shutdown
+    admin_db.close()
     wa_sessions.close()
     dedup.close()
     store.close()

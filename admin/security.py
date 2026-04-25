@@ -103,8 +103,24 @@ AUDIT_LOG_PATH = os.getenv(
 )
 
 
-def log_admin_action(user: str, action: str, result: str):
-    """Append an entry to the audit log file."""
+def log_admin_action(user: str, action: str, result: str,
+                     ip_address: str = "", admin_db=None,
+                     user_id: int | None = None, target: str = "",
+                     user_agent: str = "", details: str = ""):
+    """Log an admin action to DB (if available) and audit log file."""
+    # Write to DB first if available
+    if admin_db and getattr(admin_db, "available", False):
+        try:
+            admin_db.log_action(
+                username=user, action=action, target=target,
+                result=result, ip_address=ip_address,
+                user_agent=user_agent, details=details,
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.error("Failed to write audit to DB: %s", e)
+
+    # File logging as fallback / always
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     entry = f"[{now}] {user} {action} {result}\n"
     logger.info("Admin audit: %s %s %s", user, action, result)

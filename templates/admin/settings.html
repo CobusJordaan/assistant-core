@@ -1,0 +1,185 @@
+{% extends "admin/base.html" %}
+{% block title %}Settings{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block page_subtitle %}Application configuration and database health{% endblock %}
+
+{% block content %}
+<!-- Database Health -->
+{% if db_health %}
+<div class="card" style="margin-bottom:20px">
+    <div class="card-header">
+        <div class="card-header-icon" style="background:var(--cyan-dim);color:var(--cyan)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+        </div>
+        <h3>Database Health</h3>
+        {% if session_role == 'owner' %}
+        <button class="btn btn-ghost btn-sm" onclick="backupDatabase()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Backup Database
+        </button>
+        {% endif %}
+    </div>
+    <div class="db-health-card">
+        <div class="db-health-item">
+            <div class="label">File Size</div>
+            <div class="value" id="db-size">{{ "%.1f"|format(db_health.size / 1024) }} KB</div>
+        </div>
+        <div class="db-health-item">
+            <div class="label">Journal Mode</div>
+            <div class="value">{{ db_health.wal_mode|upper }}</div>
+        </div>
+        {% for table, count in db_health.tables.items() %}
+        <div class="db-health-item">
+            <div class="label">{{ table }}</div>
+            <div class="value">{{ count }} rows</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div id="settings-alert"></div>
+
+<!-- Add Setting Form -->
+<div class="form-inline" id="add-setting-form">
+    <div class="form-group">
+        <label class="form-label">Key</label>
+        <input type="text" class="form-input" id="setting-key" placeholder="setting_name" autocomplete="off">
+    </div>
+    <div class="form-group">
+        <label class="form-label">Value</label>
+        <input type="text" class="form-input" id="setting-value" placeholder="value">
+    </div>
+    <div class="form-group" style="max-width:120px">
+        <label class="form-label">Type</label>
+        <select class="form-select" id="setting-type">
+            <option value="string">String</option>
+            <option value="int">Int</option>
+            <option value="bool">Bool</option>
+            <option value="json">JSON</option>
+        </select>
+    </div>
+    <div class="form-group" style="max-width:100px">
+        <label class="form-label">Secret</label>
+        <select class="form-select" id="setting-secret">
+            <option value="0">No</option>
+            <option value="1">Yes</option>
+        </select>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="saveSetting()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Save
+    </button>
+</div>
+
+<!-- Settings List -->
+<div class="card">
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Key</th>
+                <th>Value</th>
+                <th>Type</th>
+                <th>Updated</th>
+                <th>Updated By</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="settings-tbody">
+            {% for s in settings %}
+            <tr id="setting-row-{{ s.key }}">
+                <td><strong>{{ s.key }}</strong></td>
+                <td>
+                    {% if s.is_secret %}
+                    <span class="secret-mask">••••••••</span>
+                    {% else %}
+                    {{ s.value }}
+                    {% endif %}
+                </td>
+                <td><span style="font-size:0.75rem;color:var(--muted)">{{ s.value_type }}</span></td>
+                <td style="font-size:0.78rem;color:var(--muted)">{{ s.updated_at[:16] if s.updated_at else '' }}</td>
+                <td style="font-size:0.78rem;color:var(--muted)">{{ s.updated_by }}</td>
+                <td class="actions">
+                    <button class="btn btn-ghost btn-sm" onclick="editSetting('{{ s.key }}', '{{ s.value if not s.is_secret else '' }}', '{{ s.value_type }}', {{ s.is_secret }})">Edit</button>
+                    <button class="btn btn-ghost btn-sm" onclick="deleteSetting('{{ s.key }}')" style="color:var(--red)">Delete</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+const csrfToken = '{{ csrf_token }}';
+
+async function saveSetting() {
+    const key = document.getElementById('setting-key').value.trim();
+    const value = document.getElementById('setting-value').value;
+    const valueType = document.getElementById('setting-type').value;
+    const isSecret = document.getElementById('setting-secret').value;
+    if (!key) { showAlert('Key is required.', 'error'); return; }
+
+    const form = new FormData();
+    form.append('key', key);
+    form.append('value', value);
+    form.append('value_type', valueType);
+    form.append('is_secret', isSecret);
+    form.append('csrf_token', csrfToken);
+
+    try {
+        const r = await fetch('/admin/api/settings', { method: 'POST', body: form });
+        const data = await r.json();
+        if (data.success) {
+            showAlert(`Setting "${key}" saved.`, 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(data.message || 'Failed.', 'error');
+        }
+    } catch (e) { showAlert('Error: ' + e.message, 'error'); }
+}
+
+function editSetting(key, value, valueType, isSecret) {
+    document.getElementById('setting-key').value = key;
+    document.getElementById('setting-value').value = value;
+    document.getElementById('setting-type').value = valueType;
+    document.getElementById('setting-secret').value = isSecret ? '1' : '0';
+    document.getElementById('setting-key').focus();
+}
+
+async function deleteSetting(key) {
+    if (!confirm(`Delete setting "${key}"?`)) return;
+
+    try {
+        const r = await fetch(`/admin/api/settings/${key}?csrf_token=${csrfToken}`, { method: 'DELETE' });
+        const data = await r.json();
+        if (data.success) {
+            showAlert(`Setting "${key}" deleted.`, 'success');
+            document.getElementById(`setting-row-${key}`)?.remove();
+        } else {
+            showAlert(data.message || 'Failed.', 'error');
+        }
+    } catch (e) { showAlert('Error: ' + e.message, 'error'); }
+}
+
+async function backupDatabase() {
+    const form = new FormData();
+    form.append('csrf_token', csrfToken);
+
+    try {
+        const r = await fetch('/admin/api/db-backup', { method: 'POST', body: form });
+        const data = await r.json();
+        if (data.success) {
+            showAlert(`Backup created: ${data.path}`, 'success');
+        } else {
+            showAlert(data.message || 'Backup failed.', 'error');
+        }
+    } catch (e) { showAlert('Error: ' + e.message, 'error'); }
+}
+
+function showAlert(msg, type) {
+    const el = document.getElementById('settings-alert');
+    el.innerHTML = `<div class="alert alert-${type === 'success' ? 'success' : 'error'}">${msg}</div>`;
+    setTimeout(() => { el.innerHTML = ''; }, 5000);
+}
+{% endblock %}

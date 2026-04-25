@@ -1,0 +1,135 @@
+{% extends "admin/base.html" %}
+{% block title %}Audit Log{% endblock %}
+{% block page_title %}Audit Log{% endblock %}
+{% block page_subtitle %}Admin action history and login events{% endblock %}
+
+{% block content %}
+<div class="form-inline">
+    <div class="form-group" style="max-width:180px">
+        <label class="form-label">Filter by User</label>
+        <input type="text" class="form-input" id="filter-user" placeholder="All users" autocomplete="off">
+    </div>
+    <div class="form-group" style="max-width:180px">
+        <label class="form-label">Filter by Action</label>
+        <select class="form-select" id="filter-action">
+            <option value="">All actions</option>
+            <option value="login">Login</option>
+            <option value="create_user">Create User</option>
+            <option value="delete_user">Delete User</option>
+            <option value="reset_password">Reset Password</option>
+            <option value="change_role">Change Role</option>
+            <option value="create_api_key">Create API Key</option>
+            <option value="revoke_api_key">Revoke API Key</option>
+            <option value="update_setting">Update Setting</option>
+            <option value="delete_setting">Delete Setting</option>
+            <option value="restart_service">Restart Service</option>
+            <option value="restart_container">Restart Container</option>
+            <option value="git_pull">Git Pull</option>
+            <option value="db_backup">DB Backup</option>
+        </select>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="loadAudit(1)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Filter
+    </button>
+</div>
+
+<div class="card">
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Username</th>
+                <th>Action</th>
+                <th>Target</th>
+                <th>Result</th>
+                <th>IP Address</th>
+            </tr>
+        </thead>
+        <tbody id="audit-tbody">
+            <tr><td colspan="6" style="text-align:center;color:var(--muted)">Loading…</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination" id="pagination"></div>
+<div class="pagination-info" id="pagination-info"></div>
+{% endblock %}
+
+{% block scripts %}
+let currentPage = 1;
+
+async function loadAudit(page) {
+    currentPage = page || 1;
+    const userFilter = document.getElementById('filter-user').value.trim();
+    const actionFilter = document.getElementById('filter-action').value;
+
+    let url = `/admin/api/audit?page=${currentPage}`;
+    if (userFilter) url += `&user=${encodeURIComponent(userFilter)}`;
+    if (actionFilter) url += `&action=${encodeURIComponent(actionFilter)}`;
+
+    try {
+        const r = await fetch(url);
+        if (r.status === 401) { window.location.href = '/admin/login'; return; }
+        const data = await r.json();
+        renderAudit(data);
+    } catch (e) {
+        document.getElementById('audit-tbody').innerHTML = `<tr><td colspan="6" style="color:var(--red)">Failed to load: ${e.message}</td></tr>`;
+    }
+}
+
+function renderAudit(data) {
+    const tbody = document.getElementById('audit-tbody');
+
+    if (!data.entries || data.entries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No audit entries found.</td></tr>';
+        document.getElementById('pagination').innerHTML = '';
+        document.getElementById('pagination-info').textContent = '';
+        return;
+    }
+
+    tbody.innerHTML = data.entries.map(e => `
+        <tr>
+            <td style="font-size:0.78rem;color:var(--muted);white-space:nowrap">${e.timestamp ? e.timestamp.replace('T', ' ').slice(0, 19) : ''}</td>
+            <td><strong>${esc(e.username)}</strong></td>
+            <td><span style="font-size:0.78rem">${esc(e.action)}</span></td>
+            <td style="font-size:0.78rem;color:var(--text-secondary)">${esc(e.target || '')}</td>
+            <td>
+                <span class="${e.result === 'SUCCESS' ? 'badge-active' : e.result === 'FAILED' ? 'badge-inactive' : ''}" style="font-size:0.68rem">
+                    ${esc(e.result || '')}
+                </span>
+            </td>
+            <td style="font-size:0.78rem;color:var(--muted)">${esc(e.ip_address || '')}</td>
+        </tr>
+    `).join('');
+
+    // Pagination
+    const pag = document.getElementById('pagination');
+    if (data.pages <= 1) {
+        pag.innerHTML = '';
+    } else {
+        let html = '';
+        html += `<button ${data.page <= 1 ? 'disabled' : ''} onclick="loadAudit(${data.page - 1})">Prev</button>`;
+        for (let i = 1; i <= data.pages; i++) {
+            if (i === data.page) html += `<span class="active">${i}</span>`;
+            else if (i <= 3 || i >= data.pages - 1 || Math.abs(i - data.page) <= 1) {
+                html += `<button onclick="loadAudit(${i})">${i}</button>`;
+            } else if (html.slice(-3) !== '...') {
+                html += '<span style="color:var(--muted)">...</span>';
+            }
+        }
+        html += `<button ${data.page >= data.pages ? 'disabled' : ''} onclick="loadAudit(${data.page + 1})">Next</button>`;
+        pag.innerHTML = html;
+    }
+
+    document.getElementById('pagination-info').textContent = `Showing page ${data.page} of ${data.pages} (${data.total} total entries)`;
+}
+
+function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+document.addEventListener('DOMContentLoaded', () => loadAudit(1));
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends "admin/base.html" %}
+{% block title %}API Keys{% endblock %}
+{% block page_title %}API Keys{% endblock %}
+{% block page_subtitle %}Create and manage API keys for assistant-core{% endblock %}
+
+{% block content %}
+<div class="form-inline" id="create-key-form">
+    <div class="form-group">
+        <label class="form-label">Key Name</label>
+        <input type="text" class="form-input" id="key-name" placeholder="e.g. Production API" autocomplete="off">
+    </div>
+    <div class="form-group">
+        <label class="form-label">Scope (optional)</label>
+        <input type="text" class="form-input" id="key-scope" placeholder="e.g. read,write">
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="createKey()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Create Key
+    </button>
+</div>
+
+<div id="key-alert"></div>
+
+<div id="new-key-display" style="display:none">
+    <div class="alert-warning" style="margin-bottom:8px">
+        <strong>Copy this key now.</strong> It will not be shown again.
+    </div>
+    <div class="key-display">
+        <span id="new-key-value"></span>
+        <button onclick="copyKey()">Copy</button>
+    </div>
+    <div style="height:16px"></div>
+</div>
+
+<div class="card">
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Prefix</th>
+                <th>Scope</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Last Used</th>
+                <th>Created By</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="keys-tbody">
+            {% for k in api_keys %}
+            <tr id="key-row-{{ k.id }}">
+                <td><strong>{{ k.name }}</strong></td>
+                <td><code style="color:var(--blue)">{{ k.prefix }}...</code></td>
+                <td>{{ k.scope or '—' }}</td>
+                <td>
+                    {% if k.is_active %}
+                    <span class="badge-active">Active</span>
+                    {% else %}
+                    <span class="badge-inactive">Revoked</span>
+                    {% endif %}
+                </td>
+                <td style="font-size:0.78rem;color:var(--muted)">{{ k.created_at[:10] if k.created_at else '' }}</td>
+                <td style="font-size:0.78rem;color:var(--muted)">{{ k.last_used_at[:10] if k.last_used_at else 'Never' }}</td>
+                <td style="font-size:0.78rem;color:var(--muted)">{{ k.created_by }}</td>
+                <td class="actions">
+                    {% if k.is_active %}
+                    <button class="btn btn-ghost btn-sm" onclick="confirmRevoke({{ k.id }}, '{{ k.name }}')" style="color:var(--red)">Revoke</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Confirm revoke modal -->
+<div id="confirm-modal" class="confirm-modal" style="display:none">
+    <div class="confirm-modal-box">
+        <h3>Revoke API Key</h3>
+        <p id="confirm-msg">Type <strong>DELETE</strong> to confirm.</p>
+        <input type="text" class="confirm-modal-input" id="confirm-input" placeholder="Type DELETE" autocomplete="off">
+        <div class="confirm-modal-actions">
+            <button class="btn btn-ghost btn-sm" onclick="closeConfirm()">Cancel</button>
+            <button class="btn btn-danger btn-sm" id="confirm-btn" disabled onclick="executeRevoke()">Revoke</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+const csrfToken = '{{ csrf_token }}';
+let pendingRevoke = null;
+
+async function createKey() {
+    const name = document.getElementById('key-name').value.trim();
+    const scope = document.getElementById('key-scope').value.trim();
+    if (!name) { showAlert('Key name is required.', 'error'); return; }
+
+    const form = new FormData();
+    form.append('name', name);
+    form.append('scope', scope);
+    form.append('csrf_token', csrfToken);
+
+    try {
+        const r = await fetch('/admin/api/api-keys', { method: 'POST', body: form });
+        const data = await r.json();
+        if (data.success) {
+            document.getElementById('new-key-value').textContent = data.raw_key;
+            document.getElementById('new-key-display').style.display = 'block';
+            document.getElementById('key-name').value = '';
+            document.getElementById('key-scope').value = '';
+            setTimeout(() => location.reload(), 10000);
+        } else {
+            showAlert(data.message || 'Failed to create key.', 'error');
+        }
+    } catch (e) { showAlert('Error: ' + e.message, 'error'); }
+}
+
+function copyKey() {
+    const key = document.getElementById('new-key-value').textContent;
+    navigator.clipboard.writeText(key).then(() => showAlert('Key copied to clipboard.', 'success'));
+}
+
+function confirmRevoke(keyId, name) {
+    pendingRevoke = { id: keyId, name };
+    document.getElementById('confirm-msg').innerHTML = `Are you sure you want to revoke key <strong>${name}</strong>? Type <strong>DELETE</strong> to confirm.`;
+    document.getElementById('confirm-input').value = '';
+    document.getElementById('confirm-btn').disabled = true;
+    document.getElementById('confirm-modal').style.display = 'flex';
+    document.getElementById('confirm-input').focus();
+}
+
+document.addEventListener('input', function(e) {
+    if (e.target.id === 'confirm-input') {
+        document.getElementById('confirm-btn').disabled = e.target.value !== 'DELETE';
+    }
+});
+
+function closeConfirm() {
+    document.getElementById('confirm-modal').style.display = 'none';
+    pendingRevoke = null;
+}
+
+async function executeRevoke() {
+    if (!pendingRevoke || document.getElementById('confirm-input').value !== 'DELETE') return;
+    closeConfirm();
+
+    try {
+        const r = await fetch(`/admin/api/api-keys/${pendingRevoke.id}?csrf_token=${csrfToken}`, { method: 'DELETE' });
+        const data = await r.json();
+        if (data.success) {
+            showAlert(`Key "${pendingRevoke.name}" revoked.`, 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(data.message || 'Failed.', 'error');
+        }
+    } catch (e) { showAlert('Error: ' + e.message, 'error'); }
+}
+
+function showAlert(msg, type) {
+    const el = document.getElementById('key-alert');
+    el.innerHTML = `<div class="alert alert-${type === 'success' ? 'success' : 'error'}">${msg}</div>`;
+    setTimeout(() => { el.innerHTML = ''; }, 5000);
+}
+{% endblock %}
