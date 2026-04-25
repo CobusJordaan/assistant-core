@@ -38,6 +38,50 @@
 </div>
 {% endif %}
 
+<!-- Backups -->
+<div class="card" style="margin-bottom:20px">
+    <div class="card-header">
+        <div class="card-header-icon" style="background:var(--orange-dim);color:var(--orange)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </div>
+        <h3>Backups</h3>
+        {% if session_role == 'owner' %}
+        <button class="btn btn-ghost btn-sm" onclick="backupDatabase()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Backup
+        </button>
+        {% endif %}
+    </div>
+    {% if backups %}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Filename</th>
+                <th>Size</th>
+                <th>Created</th>
+                {% if session_role == 'owner' %}<th>Actions</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody id="backups-tbody">
+            {% for b in backups %}
+            <tr id="backup-row-{{ loop.index }}">
+                <td><code style="font-size:0.8rem">{{ b.filename }}</code></td>
+                <td>{{ b.size_kb }} KB</td>
+                <td style="font-size:0.78rem;color:var(--muted)">{{ b.created }}</td>
+                {% if session_role == 'owner' %}
+                <td class="actions">
+                    <button class="btn btn-ghost btn-sm" onclick="deleteBackup('{{ b.filename }}', this)" style="color:var(--red)">Delete</button>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="padding:16px;color:var(--muted);font-size:0.85rem">No backups found.</div>
+    {% endif %}
+</div>
+
 <div id="settings-alert"></div>
 
 <!-- Add Setting Form -->
@@ -171,8 +215,25 @@ async function backupDatabase() {
         const data = await r.json();
         if (data.success) {
             showAlert(`Backup created: ${data.path}`, 'success');
+            setTimeout(() => location.reload(), 1500);
         } else {
             showAlert(data.message || 'Backup failed.', 'error');
+        }
+    } catch (e) { showAlert('Error: ' + e.message, 'error'); }
+}
+
+async function deleteBackup(filename, btn) {
+    if (!confirm(`Delete backup "${filename}"?`)) return;
+
+    try {
+        const r = await fetch(`/admin/api/backups/${filename}?csrf_token=${csrfToken}`, { method: 'DELETE' });
+        const data = await r.json();
+        if (data.success) {
+            showAlert(`Backup "${filename}" deleted.`, 'success');
+            const row = btn.closest('tr');
+            if (row) row.remove();
+        } else {
+            showAlert(data.message || 'Failed.', 'error');
         }
     } catch (e) { showAlert('Error: ' + e.message, 'error'); }
 }

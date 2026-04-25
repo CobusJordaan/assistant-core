@@ -362,10 +362,30 @@ async def settings_page(request: Request):
             "wal_mode": admin_db.get_wal_mode(),
         }
 
+    # Gather backups list
+    import re as _re
+    from pathlib import Path as _Path
+    backup_dir = _Path(ADMIN_BACKUP_DIR)
+    backups = []
+    if backup_dir.is_dir():
+        for f in sorted(backup_dir.glob("admin_*.db"), reverse=True):
+            try:
+                stat = f.stat()
+                m = _re.match(r"admin_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})\.db", f.name)
+                created = f"{m.group(1)} {m.group(2).replace('-', ':')}" if m else ""
+                backups.append({
+                    "filename": f.name,
+                    "size_kb": round(stat.st_size / 1024, 1),
+                    "created": created,
+                })
+            except OSError:
+                pass
+
     return templates.TemplateResponse(request, "admin/settings.html", {
         "active_page": "settings",
         "settings": settings,
         "db_health": db_health,
+        "backups": backups,
         "session_role": session.get("role", "admin"),
         "csrf_token": session.get("csrf", ""),
     })
@@ -398,12 +418,6 @@ async def api_status(request: Request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
     data = _collect_status()
-
-    # Include admin.db size for dashboard
-    admin_db = _get_admin_db(request)
-    if admin_db and admin_db.available:
-        data["admin_db_size"] = admin_db.get_db_size()
-
     return data
 
 
@@ -479,6 +493,68 @@ async def api_db_backup(request: Request, csrf_token: str = Form(...)):
         _audit(request, session, "db_backup", target=backup_path, result="SUCCESS")
         return {"success": True, "path": backup_path}
     except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
+
+
+@router.get("/api/backups")
+async def api_list_backups(request: Request):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    import re
+    from pathlib import Path
+
+    backup_dir = Path(ADMIN_BACKUP_DIR)
+    backups = []
+    if backup_dir.is_dir():
+        for f in sorted(backup_dir.glob("admin_*.db"), reverse=True):
+            try:
+                stat = f.stat()
+                # Parse date from filename: admin_YYYY-MM-DD_HH-MM.db
+                m = re.match(r"admin_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2})\.db", f.name)
+                created = m.group(1).replace("_", " ").replace("-", "-", 2) if m else ""
+                backups.append({
+                    "filename": f.name,
+                    "size_kb": round(stat.st_size / 1024, 1),
+                    "created": created,
+                })
+            except OSError:
+                pass
+
+    return {"backups": backups}
+
+
+@router.delete("/api/backups/{filename}")
+async def api_delete_backup(request: Request, filename: str):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    if not _require_owner(session):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Owner role required"})
+
+    csrf_token = request.query_params.get("csrf_token", "")
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    import re
+    from pathlib import Path
+
+    # Validate filename format to prevent path traversal
+    if not re.match(r"^admin_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}\.db$", filename):
+        return JSONResponse(status_code=400, content={"success": False, "message": "Invalid backup filename"})
+
+    backup_path = Path(ADMIN_BACKUP_DIR) / filename
+    if not backup_path.exists():
+        return JSONResponse(status_code=404, content={"success": False, "message": "Backup not found"})
+
+    try:
+        backup_path.unlink()
+        _audit(request, session, "delete_backup", target=filename, result="SUCCESS")
+        return {"success": True}
+    except OSError as e:
         return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
 
 

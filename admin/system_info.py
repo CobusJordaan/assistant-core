@@ -250,7 +250,7 @@ def get_db_info(db_path: str = "memory.db") -> list[dict]:
             ).strftime("%Y-%m-%d %H:%M:%S UTC"),
         })
 
-    # Scan known data directories for additional .db files
+    # Scan known data directories for additional .db files (skip backups)
     for scan_dir in ["/opt/ai-assistant/data", "/opt/ai-data"]:
         scan_path = Path(scan_dir)
         if not scan_path.is_dir():
@@ -258,6 +258,12 @@ def get_db_info(db_path: str = "memory.db") -> list[dict]:
         try:
             for db_file in scan_path.rglob("*.db"):
                 if db_file.resolve() == p.resolve():
+                    continue
+                # Skip backup files (in backups/ dir or matching admin_YYYY-*.db)
+                if "backups" in db_file.parts:
+                    continue
+                import re
+                if re.match(r"admin_\d{4}-", db_file.name):
                     continue
                 stat = db_file.stat()
                 dbs.append({
