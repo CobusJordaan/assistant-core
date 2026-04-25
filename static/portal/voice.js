@@ -134,12 +134,15 @@
     }
 
     // --- Browser Speech API ---
+    let silenceTimer = null;
+    const SILENCE_TIMEOUT = 1500; // ms of silence before auto-stop
+
     function startBrowserSTT() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         recognition = new SpeechRecognition();
         recognition.lang = 'en-US';
         recognition.interimResults = true;
-        recognition.continuous = true;
+        recognition.continuous = false; // non-continuous — stops faster on silence
         recognition.maxAlternatives = 1;
 
         statusEl.textContent = 'Listening (Browser)...';
@@ -157,10 +160,22 @@
                 }
             }
             transcriptEl.textContent = finalTranscript + interim;
+
+            // Reset silence timer on each result
+            clearTimeout(silenceTimer);
+            if (finalTranscript) {
+                // Got final text — auto-submit after brief pause
+                silenceTimer = setTimeout(function () {
+                    if (voiceState === 'recording' && recognition) {
+                        recognition.stop();
+                    }
+                }, SILENCE_TIMEOUT);
+            }
         };
 
         recognition.onerror = function (e) {
             console.error('Speech recognition error:', e.error);
+            clearTimeout(silenceTimer);
             if (e.error === 'not-allowed') {
                 cleanupVoice();
                 showChatAlert('Microphone access is required for voice mode.');
@@ -168,7 +183,8 @@
         };
 
         recognition.onend = function () {
-            // Recognition ended (could be auto-stop on silence)
+            clearTimeout(silenceTimer);
+            // Recognition ended (auto-stop on silence or manual stop)
             if (voiceState === 'recording') {
                 processTranscript(finalTranscript);
             }
