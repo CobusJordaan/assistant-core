@@ -68,18 +68,29 @@ def get_status() -> dict:
     """Get git status summary."""
     branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"])
     status = _run_git(["status", "--porcelain"])
-    log_result = _run_git(["log", "-1", "--format=%h %s (%cr)"])
+    # Separate fields with a delimiter to parse reliably
+    log_hash = _run_git(["log", "-1", "--format=%h"])
+    log_msg = _run_git(["log", "-1", "--format=%s"])
+    log_time = _run_git(["log", "-1", "--format=%cr"])
 
     dirty_lines = [
         line for line in status["output"].strip().splitlines()
         if line.strip()
     ] if status["success"] else []
 
+    last_commit = None
+    if log_hash["success"]:
+        last_commit = {
+            "hash": log_hash["output"].strip(),
+            "message": log_msg["output"].strip() if log_msg["success"] else "",
+            "relative_time": log_time["output"].strip() if log_time["success"] else "",
+        }
+
     return {
         "branch": branch["output"].strip() if branch["success"] else "unknown",
         "clean": status["success"] and len(dirty_lines) == 0,
         "dirty_files": len(dirty_lines),
-        "last_commit": log_result["output"].strip() if log_result["success"] else "unknown",
+        "last_commit": last_commit,
     }
 
 

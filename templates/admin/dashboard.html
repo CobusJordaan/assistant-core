@@ -51,12 +51,12 @@
         <h3>GPU</h3>
         <div id="gpu-content">
             {% if status.gpu %}
-            <div class="stat"><label>Model</label><span class="val">{{ status.gpu.name }}</span></div>
-            <div class="stat"><label>Temperature</label><span class="val">{{ status.gpu.temperature }}°C</span></div>
-            <div class="stat"><label>Utilization</label><span class="val">{{ status.gpu.utilization }}%</span></div>
-            <div class="stat"><label>VRAM</label><span class="val">{{ status.gpu.memory_used }} / {{ status.gpu.memory_total }} MB</span></div>
-            <div class="stat"><label>Power</label><span class="val">{{ status.gpu.power_draw }} / {{ status.gpu.power_limit }} W</span></div>
-            <div class="stat"><label>Fan</label><span class="val">{{ status.gpu.fan_speed }}%</span></div>
+            <div class="stat"><label>Model</label><span class="val">{{ status.gpu.name or 'N/A' }}</span></div>
+            <div class="stat"><label>Temperature</label><span class="val">{{ status.gpu.temperature if status.gpu.temperature is not none else 'N/A' }}{% if status.gpu.temperature is not none %}°C{% endif %}</span></div>
+            <div class="stat"><label>Utilization</label><span class="val">{{ status.gpu.utilization if status.gpu.utilization is not none else 'N/A' }}{% if status.gpu.utilization is not none %}%{% endif %}</span></div>
+            <div class="stat"><label>VRAM</label><span class="val">{{ status.gpu.memory_used if status.gpu.memory_used is not none else 'N/A' }} / {{ status.gpu.memory_total if status.gpu.memory_total is not none else 'N/A' }} MB</span></div>
+            <div class="stat"><label>Power</label><span class="val">{{ status.gpu.power_draw if status.gpu.power_draw is not none else 'N/A' }} / {{ status.gpu.power_limit if status.gpu.power_limit is not none else 'N/A' }} W</span></div>
+            <div class="stat"><label>Fan</label><span class="val">{{ status.gpu.fan_speed if status.gpu.fan_speed is not none else 'N/A' }}{% if status.gpu.fan_speed is not none %}%{% endif %}</span></div>
             {% else %}
             <div class="stat"><label>Status</label><span class="val">Not available</span></div>
             {% endif %}
@@ -123,9 +123,13 @@
     <div class="card">
         <h3>Database / Storage</h3>
         <div id="db-content">
+            {% if status.databases %}
             {% for db in status.databases %}
             <div class="stat"><label>{{ db.name }}</label><span class="val">{{ db.size_kb }} KB</span></div>
             {% endfor %}
+            {% else %}
+            <div class="stat"><label>Status</label><span class="val">No SQLite database files found</span></div>
+            {% endif %}
         </div>
     </div>
 
@@ -144,6 +148,11 @@
 {% endblock %}
 
 {% block scripts %}
+function v(val, suffix) {
+    if (val === null || val === undefined) return 'N/A';
+    return suffix ? val + suffix : val;
+}
+
 function updateDashboard(data) {
     // Update services
     if (data.services) {
@@ -175,13 +184,14 @@ function updateDashboard(data) {
 
     // Update GPU
     if (data.gpu) {
+        const g = data.gpu;
         document.getElementById('gpu-content').innerHTML = `
-            <div class="stat"><label>Model</label><span class="val">${data.gpu.name}</span></div>
-            <div class="stat"><label>Temperature</label><span class="val">${data.gpu.temperature}°C</span></div>
-            <div class="stat"><label>Utilization</label><span class="val">${data.gpu.utilization}%</span></div>
-            <div class="stat"><label>VRAM</label><span class="val">${data.gpu.memory_used} / ${data.gpu.memory_total} MB</span></div>
-            <div class="stat"><label>Power</label><span class="val">${data.gpu.power_draw} / ${data.gpu.power_limit} W</span></div>
-            <div class="stat"><label>Fan</label><span class="val">${data.gpu.fan_speed}%</span></div>`;
+            <div class="stat"><label>Model</label><span class="val">${g.name || 'N/A'}</span></div>
+            <div class="stat"><label>Temperature</label><span class="val">${v(g.temperature, '°C')}</span></div>
+            <div class="stat"><label>Utilization</label><span class="val">${v(g.utilization, '%')}</span></div>
+            <div class="stat"><label>VRAM</label><span class="val">${v(g.memory_used)} / ${v(g.memory_total)} MB</span></div>
+            <div class="stat"><label>Power</label><span class="val">${v(g.power_draw)} / ${v(g.power_limit)} W</span></div>
+            <div class="stat"><label>Fan</label><span class="val">${v(g.fan_speed, '%')}</span></div>`;
     } else {
         document.getElementById('gpu-content').innerHTML = '<div class="stat"><label>Status</label><span class="val">Not available</span></div>';
     }
@@ -220,12 +230,14 @@ function updateDashboard(data) {
     }
 
     // Update Databases
-    if (data.databases) {
+    if (data.databases && data.databases.length > 0) {
         let dbHtml = '';
         for (const db of data.databases) {
             dbHtml += `<div class="stat"><label>${db.name}</label><span class="val">${db.size_kb} KB</span></div>`;
         }
         document.getElementById('db-content').innerHTML = dbHtml;
+    } else {
+        document.getElementById('db-content').innerHTML = '<div class="stat"><label>Status</label><span class="val">No SQLite database files found</span></div>';
     }
 
     // Update System

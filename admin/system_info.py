@@ -21,7 +21,7 @@ def get_cpu_info() -> dict:
     return {
         "percent": psutil.cpu_percent(interval=0.5),
         "count": psutil.cpu_count(),
-        "freq_mhz": round(freq.current) if freq else None,
+        "freq": round(freq.current) if freq else None,
         "load_avg": load_avg,
     }
 
@@ -130,30 +130,29 @@ def get_gpu_info() -> dict | None:
 
     return {
         "name": parts[0],
-        "temp_c": safe_int(parts[1]),
-        "util_percent": safe_int(parts[2]),
-        "vram_used_mb": safe_int(parts[3]),
-        "vram_total_mb": safe_int(parts[4]),
-        "power_w": safe_float(parts[5]),
-        "power_limit_w": safe_float(parts[6]),
-        "fan_percent": safe_int(parts[7]) if len(parts) > 7 else None,
+        "temperature": safe_int(parts[1]),
+        "utilization": safe_int(parts[2]),
+        "memory_used": safe_int(parts[3]),
+        "memory_total": safe_int(parts[4]),
+        "power_draw": safe_float(parts[5]),
+        "power_limit": safe_float(parts[6]),
+        "fan_speed": safe_int(parts[7]) if len(parts) > 7 else None,
     }
 
 
-def get_db_info(db_path: str = "memory.db") -> dict:
-    """SQLite file info + scan for .db files in data directories."""
+def get_db_info(db_path: str = "memory.db") -> list[dict]:
+    """SQLite file info as a list. Includes main DB + scanned extras."""
+    dbs = []
     p = Path(db_path)
-    info: dict = {
-        "type": "sqlite",
-        "path": str(p.resolve()) if p.exists() else db_path,
-        "exists": p.exists(),
-        "size_kb": round(p.stat().st_size / 1024, 1) if p.exists() else 0,
-        "last_modified": (
-            datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-            if p.exists() else None
-        ),
-        "extra_dbs": [],
-    }
+    if p.exists():
+        dbs.append({
+            "name": p.name,
+            "path": str(p.resolve()),
+            "size_kb": round(p.stat().st_size / 1024, 1),
+            "last_modified": datetime.fromtimestamp(
+                p.stat().st_mtime, tz=timezone.utc
+            ).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        })
 
     # Scan known data directories for additional .db files
     for scan_dir in ["/opt/ai-assistant/data", "/opt/ai-data"]:
@@ -162,15 +161,21 @@ def get_db_info(db_path: str = "memory.db") -> dict:
             continue
         try:
             for db_file in scan_path.rglob("*.db"):
+                if db_file.resolve() == p.resolve():
+                    continue
                 stat = db_file.stat()
-                info["extra_dbs"].append({
+                dbs.append({
+                    "name": db_file.name,
                     "path": str(db_file),
                     "size_kb": round(stat.st_size / 1024, 1),
+                    "last_modified": datetime.fromtimestamp(
+                        stat.st_mtime, tz=timezone.utc
+                    ).strftime("%Y-%m-%d %H:%M:%S UTC"),
                 })
         except (PermissionError, OSError):
             pass
 
-    return info
+    return dbs
 
 
 def get_version_info(repo_dir: str = "/opt/ai-assistant/services/assistant-core") -> dict:
