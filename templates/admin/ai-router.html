@@ -224,7 +224,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
 function copyUrl(el) {
     navigator.clipboard.writeText(el.textContent.trim());
     const orig = el.textContent;
@@ -356,5 +355,4 @@ async function testRouter() {
 document.addEventListener('DOMContentLoaded', () => {
     checkArHealth();
 });
-</script>
 {% endblock %}
