@@ -155,6 +155,11 @@
                 <label class="form-label">Output Directory</label>
                 <input type="text" class="form-input" name="output_dir" value="{{ settings.get('output_dir', '/opt/ai-assistant/data/image-bridge/output') }}">
             </div>
+            <div class="form-group">
+                <label class="form-label">Public Base URL</label>
+                <input type="text" class="form-input" name="public_base_url" value="{{ settings.get('public_base_url', 'http://172.18.2.195:5000') }}" placeholder="http://172.18.2.195:5000">
+                <div style="font-size:0.72rem; color:var(--muted); margin-top:2px;">Used to build image URLs returned to Open WebUI</div>
+            </div>
             <button type="submit" class="btn btn-primary btn-sm" id="btn-save-settings" style="margin-top:6px;">
                 <span class="spinner spinner-hidden" id="save-spinner"></span>
                 <span id="save-label">Save Settings</span>

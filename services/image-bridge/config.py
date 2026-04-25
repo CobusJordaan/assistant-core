@@ -28,6 +28,7 @@ class ImageBridgeConfig:
     default_checkpoint: str = "juggernautXL_v9.safetensors"
     default_negative_prompt: str = ""
     output_dir: str = "/opt/ai-assistant/data/image-bridge/output"
+    public_base_url: str = "http://172.18.2.195:5000"
 
     # ADetailer
     enable_adetailer: bool = True
@@ -57,6 +58,7 @@ _SETTING_MAP = {
     "default_checkpoint": ("default_checkpoint", str),
     "default_negative_prompt": ("default_negative_prompt", str),
     "output_dir": ("output_dir", str),
+    "public_base_url": ("public_base_url", str),
     "enable_adetailer": ("enable_adetailer", _bool_convert),
     "adetailer_model": ("adetailer_model", str),
     "adetailer_prompt": ("adetailer_prompt", str),

@@ -429,6 +429,7 @@ async def image_bridge_page(request: Request):
                      "default_height", "default_steps", "default_cfg_scale",
                      "default_sampler_name", "default_scheduler", "default_model",
                      "default_checkpoint", "default_negative_prompt", "output_dir",
+                     "public_base_url",
                      "enable_adetailer", "adetailer_model", "adetailer_prompt",
                      "adetailer_negative_prompt"):
             s = admin_db.get_setting(key)
@@ -495,6 +496,7 @@ async def api_image_bridge_settings(
     default_checkpoint: str = Form(""),
     default_negative_prompt: str = Form(""),
     output_dir: str = Form(""),
+    public_base_url: str = Form(""),
     enable_adetailer: str = Form("false"),
     adetailer_model: str = Form(""),
     adetailer_prompt: str = Form(""),
@@ -525,6 +527,7 @@ async def api_image_bridge_settings(
         "default_checkpoint": ("string", default_checkpoint),
         "default_negative_prompt": ("string", default_negative_prompt),
         "output_dir": ("string", output_dir),
+        "public_base_url": ("string", public_base_url),
         "enable_adetailer": ("bool", enable_adetailer),
         "adetailer_model": ("string", adetailer_model),
         "adetailer_prompt": ("string", adetailer_prompt),

@@ -11,7 +11,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from config import load_config, ImageBridgeConfig
@@ -48,6 +49,13 @@ async def lifespan(app: FastAPI):
         logger.info("Forge connected at %s", _config.forge_base_url)
     else:
         logger.warning("Forge not reachable at %s — will retry on requests", _config.forge_base_url)
+
+    # Ensure output dir exists and mount static files
+    out_dir = Path(_config.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/images", StaticFiles(directory=str(out_dir)), name="images")
+    logger.info("Serving images from %s", out_dir)
+    logger.info("Public base URL: %s", _config.public_base_url)
 
     logger.info("Image Bridge ready on port %s", _config.port)
     yield
@@ -129,7 +137,6 @@ async def list_models(
 
 @app.post("/v1/images/generations")
 async def generate_image(
-    request: Request,
     req: ImageGenerationRequest,
     authorization: str | None = Header(None),
     x_admin_test: str | None = Header(None, alias="X-Admin-Test"),
@@ -176,13 +183,12 @@ async def generate_image(
 
     # Build response based on response_format
     use_url = req.response_format != "b64_json"
-    # Derive base URL from the incoming request so it works from any client
-    base_url = str(request.base_url).rstrip("/")
+    public_base = _config.public_base_url.rstrip("/")
     output = []
     for item in results:
         if use_url and item.get("filename"):
             output.append({
-                "url": f"{base_url}/images/{item['filename']}",
+                "url": f"{public_base}/images/{item['filename']}",
                 "revised_prompt": item["revised_prompt"],
             })
         else:
@@ -195,22 +201,6 @@ async def generate_image(
         "created": int(time.time()),
         "data": output,
     }
-
-
-@app.get("/images/{filename}")
-async def serve_image(filename: str):
-    """Serve a generated image file."""
-    if not _config:
-        raise HTTPException(status_code=503, detail="Service not initialized")
-
-    # Sanitize filename to prevent path traversal
-    safe = Path(filename).name
-    filepath = Path(_config.output_dir) / safe
-
-    if not filepath.is_file():
-        raise HTTPException(status_code=404, detail="Image not found")
-
-    return FileResponse(filepath, media_type="image/png")
 
 
 # ---------------------------------------------------------------------------

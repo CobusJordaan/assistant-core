@@ -248,6 +248,7 @@ class AdminDB:
             ("default_sampler_name", "DPM++ 2M SDE", "string", 0),
             ("default_model", "", "string", 0),
             ("output_dir", "/opt/ai-assistant/data/image-bridge/output", "string", 0),
+            ("public_base_url", "http://172.18.2.195:5000", "string", 0),
             ("default_negative_prompt", "cartoon, anime, illustration, painting, drawing, 3d render, cgi, plastic skin, doll, oversaturated, low quality, blurry, deformed, bad anatomy, extra fingers, distorted face, unrealistic eyes", "string", 0),
             ("default_scheduler", "Karras", "string", 0),
             ("default_checkpoint", "juggernautXL_v9.safetensors", "string", 0),
