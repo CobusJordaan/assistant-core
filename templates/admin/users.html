@@ -61,16 +61,22 @@
                 <td style="font-size:0.78rem;color:var(--muted)">{{ u.created_at[:10] if u.created_at else '' }}</td>
                 <td class="actions">
                     {% if session_role == 'owner' %}
+                    {% set is_last_owner = (u.role == 'owner' and owner_count <= 1) %}
                     <button class="btn btn-ghost btn-sm" onclick="resetPassword({{ u.id }}, '{{ u.username }}')" title="Reset password">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                         Reset
                     </button>
+                    {% if is_last_owner %}
+                    <button class="btn btn-ghost btn-sm" disabled title="Cannot deactivate the last owner account" style="opacity:0.35;cursor:not-allowed">Deactivate</button>
+                    <button class="btn btn-ghost btn-sm" disabled title="Cannot delete the last owner account" style="opacity:0.35;cursor:not-allowed;color:var(--red)">Delete</button>
+                    {% else %}
                     <button class="btn btn-ghost btn-sm" onclick="toggleUser({{ u.id }})" title="Toggle active">
                         {{ 'Deactivate' if u.is_active else 'Activate' }}
                     </button>
-                    {% if not (u.role == 'owner' and owner_count <= 1) %}
                     <button class="btn btn-ghost btn-sm" onclick="confirmDelete('user', {{ u.id }}, '{{ u.username }}')" title="Delete user" style="color:var(--red)">Delete</button>
                     {% endif %}
+                    {% else %}
+                    <span style="color:var(--muted);font-size:0.78rem">—</span>
                     {% endif %}
                 </td>
             </tr>
