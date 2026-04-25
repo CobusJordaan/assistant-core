@@ -89,7 +89,7 @@
                     <button class="btn btn-ghost btn-sm" onclick="toggleUser({{ u.id }})">
                         {{ 'Disable' if u.is_active else 'Enable' }}
                     </button>
-                    <button class="btn btn-ghost btn-sm" onclick="editPermissions({{ u.id }}, {{ u | tojson | e }})">Permissions</button>
+                    <button class="btn btn-ghost btn-sm" onclick="editPermissions({{ u.id }})">Permissions</button>
                     <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteUser({{ u.id }}, '{{ u.username }}')">Delete</button>
                 </td>
             </tr>
@@ -143,6 +143,18 @@
 
 {% block scripts %}
 const csrfToken = '{{ csrf_token }}';
+const usersData = {};
+{% for u in users %}
+usersData[{{ u.id }}] = {
+    chat_allowed: {{ u.chat_allowed }},
+    image_gen_allowed: {{ u.image_gen_allowed }},
+    coding_allowed: {{ u.coding_allowed }},
+    vision_allowed: {{ u.vision_allowed }},
+    voice_allowed: {{ u.voice_allowed | default(1) }},
+    daily_message_limit: {{ u.daily_message_limit }},
+    daily_image_limit: {{ u.daily_image_limit }}
+};
+{% endfor %}
 
 function showAlert(msg, type) {
     document.getElementById('fu-alert').innerHTML =
@@ -214,7 +226,9 @@ async function deleteUser(userId, username) {
     } else showAlert(data.message || 'Failed.', 'error');
 }
 
-function editPermissions(userId, user) {
+function editPermissions(userId) {
+    const user = usersData[userId];
+    if (!user) return;
     document.getElementById('perm-user-id').value = userId;
     document.getElementById('perm-chat').checked = !!user.chat_allowed;
     document.getElementById('perm-image').checked = !!user.image_gen_allowed;
