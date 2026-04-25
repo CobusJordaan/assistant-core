@@ -74,8 +74,7 @@ def _collect_status() -> dict:
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     if not is_configured():
-        return templates.TemplateResponse("admin/login.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "admin/login.html", {
             "error": "Admin not configured. Set ADMIN_PASSWORD_HASH and ADMIN_SECRET_KEY in .env",
             "lockout_remaining": 0,
             "info": None,
@@ -89,8 +88,7 @@ async def login_page(request: Request):
     ip = _get_client_ip(request)
     lockout = get_lockout_remaining(ip)
 
-    return templates.TemplateResponse("admin/login.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "admin/login.html", {
         "error": None,
         "lockout_remaining": lockout,
         "info": None,
@@ -104,8 +102,7 @@ async def login_submit(
     password: str = Form(...),
 ):
     if not is_configured():
-        return templates.TemplateResponse("admin/login.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "admin/login.html", {
             "error": "Admin not configured.",
             "lockout_remaining": 0,
             "info": None,
@@ -116,8 +113,7 @@ async def login_submit(
     # Rate limit check
     if not check_rate_limit(ip):
         lockout = get_lockout_remaining(ip)
-        return templates.TemplateResponse("admin/login.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "admin/login.html", {
             "error": None,
             "lockout_remaining": lockout,
             "info": None,
@@ -128,8 +124,7 @@ async def login_submit(
         record_failed_attempt(ip)
         await asyncio.sleep(1)  # Slow down brute force
         lockout = get_lockout_remaining(ip)
-        return templates.TemplateResponse("admin/login.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "admin/login.html", {
             "error": "Invalid username or password.",
             "lockout_remaining": lockout,
             "info": None,
@@ -161,8 +156,7 @@ async def dashboard(request: Request):
         return RedirectResponse("/admin/login", status_code=302)
 
     status = _collect_status()
-    return templates.TemplateResponse("admin/dashboard.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "admin/dashboard.html", {
         "active_page": "dashboard",
         "status": status,
         "csrf_token": session.get("csrf", ""),
@@ -179,8 +173,7 @@ async def logs_page(request: Request):
     if not session:
         return RedirectResponse("/admin/login", status_code=302)
 
-    return templates.TemplateResponse("admin/logs.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "admin/logs.html", {
         "active_page": "logs",
         "csrf_token": session.get("csrf", ""),
     })

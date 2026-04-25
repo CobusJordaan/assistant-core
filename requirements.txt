@@ -8,3 +8,4 @@ psutil
 jinja2
 itsdangerous
 bcrypt
+python-multipart
