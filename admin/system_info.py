@@ -164,65 +164,67 @@ def get_system_sensors() -> dict | None:
         "cores": [],
     }
 
-    def parse_temp(line: str) -> float | None:
-        m = re.search(r'[+\-]?([\d.]+)\s*°?C', line)
-        if m:
-            val = float(m.group(1))
-            if val > 0:
-                return round(val, 1)
-        return None
-
-    # Split into sections by chip header (non-indented lines after blank lines)
-    sections = re.split(r'\n(?=\S)', output)
+    # Split into chip sections (separated by blank lines, header is non-indented)
+    sections = re.split(r'\n\n+', output.strip())
 
     core_temps = []
     jc42_temps = []
 
     for section in sections:
-        lines = section.strip().split('\n')
-        if not lines:
+        section = section.strip()
+        if not section:
             continue
-        header = lines[0].lower()
+        header = section.split('\n', 1)[0].lower()
 
+        # --- CPU: coretemp or k10temp ---
         if 'coretemp' in header or 'k10temp' in header:
-            for line in lines[1:]:
-                lower = line.lower().strip()
-                if lower.startswith('package id') or lower.startswith('tctl') or lower.startswith('tdie'):
-                    t = parse_temp(line)
-                    if t is not None:
-                        data["cpu_package"] = t
-                elif lower.startswith('core'):
-                    t = parse_temp(line)
-                    if t is not None:
-                        core_match = re.match(r'Core\s+(\d+)', line, re.IGNORECASE)
-                        core_num = int(core_match.group(1)) if core_match else len(core_temps)
-                        core_temps.append(t)
-                        data["cores"].append({"core": core_num, "temp": t})
+            # Package / Tctl / Tdie
+            pkg = re.search(
+                r'(?:Package\s+id\s+\d+|Tctl|Tdie):\s*\+?([0-9.]+)\s*°C',
+                section, re.IGNORECASE,
+            )
+            if pkg:
+                data["cpu_package"] = round(float(pkg.group(1)), 1)
 
+            # Per-core temps
+            for m in re.finditer(
+                r'Core\s+(\d+):\s*\+?([0-9.]+)\s*°C',
+                section, re.IGNORECASE,
+            ):
+                core_num = int(m.group(1))
+                temp = round(float(m.group(2)), 1)
+                if temp > 0:
+                    core_temps.append(temp)
+                    data["cores"].append({"core": core_num, "temp": temp})
+
+        # --- NVMe ---
         elif 'nvme' in header:
-            for line in lines[1:]:
-                if line.lower().strip().startswith('composite'):
-                    t = parse_temp(line)
-                    if t is not None:
-                        data["nvme_temp"] = t
-                        break
+            m = re.search(
+                r'Composite:\s*\+?([0-9.]+)\s*°C',
+                section, re.IGNORECASE,
+            )
+            if m:
+                data["nvme_temp"] = round(float(m.group(1)), 1)
 
+        # --- ACPI / system temp ---
         elif 'acpitz' in header or 'acpi' in header:
-            for line in lines[1:]:
-                lower = line.lower().strip()
-                if lower.startswith('temp1') or lower.startswith('temp'):
-                    t = parse_temp(line)
-                    if t is not None:
-                        data["system_temp"] = t
-                        break
+            m = re.search(
+                r'temp\d?:\s*\+?([0-9.]+)\s*°C',
+                section, re.IGNORECASE,
+            )
+            if m:
+                data["system_temp"] = round(float(m.group(1)), 1)
 
+        # --- Board / DIMM temps (jc42) ---
         elif 'jc42' in header:
-            for line in lines[1:]:
-                lower = line.lower().strip()
-                if lower.startswith('temp1') or lower.startswith('temp'):
-                    t = parse_temp(line)
-                    if t is not None:
-                        jc42_temps.append(t)
+            m = re.search(
+                r'temp\d?:\s*\+?([0-9.]+)\s*°C',
+                section, re.IGNORECASE,
+            )
+            if m:
+                val = round(float(m.group(1)), 1)
+                if val > 0:
+                    jc42_temps.append(val)
 
     if core_temps:
         data["cpu_core_avg"] = round(sum(core_temps) / len(core_temps), 1)
