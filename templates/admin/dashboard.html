@@ -4,6 +4,7 @@
 {% block page_subtitle %}assistant-core monitoring and control{% endblock %}
 
 {% block content %}
+{% macro temp_color(t) %}{{ 'color:var(--red)' if t > 70 else 'color:var(--orange)' if t >= 50 else 'color:var(--green)' }}{% endmacro %}
 <!-- Metric Strip -->
 <div class="metric-strip" id="metric-strip">
     <div class="metric-card" id="mc-svc">
@@ -65,15 +66,15 @@
 <!-- Dashboard Grid -->
 <div class="card-grid">
 
-    <!-- Services -->
-    <div class="card" id="card-services">
+    <!-- Services (full width) -->
+    <div class="card card-full" id="card-services">
         <div class="card-header">
             <div class="card-header-icon metric-icon-green">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="6" cy="6" r="1"/><circle cx="6" cy="18" r="1"/></svg>
             </div>
             <h3>Services</h3>
         </div>
-        <div id="services-content">
+        <div class="svc-grid" id="services-content">
             {% for name, svc in status.services.services.items() %}
             <div class="svc-row">
                 <div class="svc-info">
@@ -115,8 +116,10 @@
         </div>
     </div>
 
-    <!-- GPU -->
-    <div class="card" id="card-gpu">
+    <!-- ROW 1: GPU | CPU/RAM | Thermal Overview -->
+
+    <!-- GPU Monitor (featured) -->
+    <div class="card card-featured" id="card-gpu">
         <div class="card-header">
             <div class="card-header-icon metric-icon-purple">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
@@ -171,98 +174,7 @@
         </div>
     </div>
 
-    <!-- Thermal Overview -->
-    <div class="card card-wide" id="card-thermal">
-        <div class="card-header">
-            <div class="card-header-icon metric-icon-orange">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
-            </div>
-            <h3>Thermal Overview</h3>
-            <button class="btn btn-ghost btn-sm" onclick="toggleCoreTemps()" id="core-toggle-btn" style="display:none;margin-left:auto;font-size:0.72rem">Show Cores</button>
-        </div>
-        <div id="thermal-content">
-            {% if status.sensors or (status.gpu and status.gpu.temperature is not none) %}
-            {% set s = status.sensors %}
-            {% macro temp_fill(t) %}{{ 'fill-red' if t > 70 else 'fill-orange' if t >= 50 else 'fill-green' }}{% endmacro %}
-            {% macro temp_bar(label, t) %}
-            <div class="progress-row">
-                <div class="progress-header"><span class="progress-label">{{ label }}</span><span class="progress-value">{{ t }}°C</span></div>
-                <div class="progress-track"><div class="progress-fill {{ temp_fill(t) }}" style="width: {{ [t, 100] | min }}%"></div></div>
-            </div>
-            {% endmacro %}
-
-            <div class="thermal-grid">
-                <!-- CPU Section -->
-                <div class="thermal-section">
-                    <div class="thermal-section-title">CPU</div>
-                    {% if s and s.cpu_package is not none %}
-                    {{ temp_bar('Package', s.cpu_package) }}
-                    {% endif %}
-                    {% if s and s.cpu_core_max is not none %}
-                    {{ temp_bar('Max Core', s.cpu_core_max) }}
-                    {% endif %}
-                    {% if s and s.cpu_core_avg is not none %}
-                    {{ temp_bar('Avg Core', s.cpu_core_avg) }}
-                    {% endif %}
-                    {% if not s or (s.cpu_package is none and s.cpu_core_max is none and s.cpu_core_avg is none) %}
-                    <div class="stat"><label>Temperature</label><span class="val" style="color:var(--muted)">N/A</span></div>
-                    {% endif %}
-                </div>
-
-                <!-- GPU Section -->
-                <div class="thermal-section">
-                    <div class="thermal-section-title">GPU</div>
-                    {% if status.gpu and status.gpu.temperature is not none %}
-                    {{ temp_bar('Temperature', status.gpu.temperature) }}
-                    {% else %}
-                    <div class="stat"><label>Temperature</label><span class="val" style="color:var(--muted)">N/A</span></div>
-                    {% endif %}
-                </div>
-
-                <!-- Storage Section -->
-                <div class="thermal-section">
-                    <div class="thermal-section-title">Storage</div>
-                    {% if s and s.nvme_temp is not none %}
-                    {{ temp_bar('NVMe', s.nvme_temp) }}
-                    {% else %}
-                    <div class="stat"><label>NVMe</label><span class="val" style="color:var(--muted)">N/A</span></div>
-                    {% endif %}
-                </div>
-
-                <!-- System Section -->
-                <div class="thermal-section">
-                    <div class="thermal-section-title">System</div>
-                    {% if s and s.board_temp_avg is not none %}
-                    {{ temp_bar('Board Avg', s.board_temp_avg) }}
-                    {% endif %}
-                    {% if s and s.system_temp is not none %}
-                    {{ temp_bar('ACPI', s.system_temp) }}
-                    {% endif %}
-                    {% if not s or (s.board_temp_avg is none and s.system_temp is none) %}
-                    <div class="stat"><label>Temperature</label><span class="val" style="color:var(--muted)">N/A</span></div>
-                    {% endif %}
-                </div>
-            </div>
-
-            {% else %}
-            <div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">Sensors not available</span></div>
-            {% endif %}
-        </div>
-        <div id="core-temps-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-            {% if status.sensors and status.sensors.cores %}
-            <div class="thermal-cores-grid">
-            {% for c in status.sensors.cores %}
-            <div class="progress-row">
-                <div class="progress-header"><span class="progress-label">Core {{ c.core }}</span><span class="progress-value">{{ c.temp }}°C</span></div>
-                <div class="progress-track"><div class="progress-fill {{ temp_fill(c.temp) }}" style="width: {{ [c.temp, 100] | min }}%"></div></div>
-            </div>
-            {% endfor %}
-            </div>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- CPU / RAM -->
+    <!-- CPU / RAM (stat rows, no bars) -->
     <div class="card" id="card-cpu">
         <div class="card-header">
             <div class="card-header-icon metric-icon-blue">
@@ -271,26 +183,39 @@
             <h3>CPU / RAM</h3>
         </div>
         <div id="cpu-content">
-            <div class="progress-row">
-                <div class="progress-header">
-                    <span class="progress-label">CPU Usage</span>
-                    <span class="progress-value">{{ status.cpu.percent }}%</span>
-                </div>
-                <div class="progress-track"><div class="progress-fill {{ 'fill-red' if status.cpu.percent > 90 else 'fill-orange' if status.cpu.percent > 70 else 'fill-green' }}" style="width: {{ [status.cpu.percent, 1] | max }}%"></div></div>
-            </div>
-            <div class="progress-row">
-                <div class="progress-header">
-                    <span class="progress-label">RAM</span>
-                    <span class="progress-value">{{ status.memory.used_gb }} / {{ status.memory.total_gb }} GB ({{ status.memory.percent }}%)</span>
-                </div>
-                <div class="progress-track"><div class="progress-fill {{ 'fill-red' if status.memory.percent > 90 else 'fill-orange' if status.memory.percent > 75 else 'fill-blue' }}" style="width: {{ status.memory.percent }}%"></div></div>
-            </div>
+            <div class="stat"><label>CPU Usage</label><span class="val">{{ status.cpu.percent }}%</span></div>
+            <div class="stat"><label>RAM</label><span class="val">{{ status.memory.used_gb }} / {{ status.memory.total_gb }} GB ({{ status.memory.percent }}%)</span></div>
             <div class="stat"><label>Cores</label><span class="val">{{ status.cpu.count }}</span></div>
             {% if status.cpu.freq %}<div class="stat"><label>Frequency</label><span class="val">{{ status.cpu.freq }} MHz</span></div>{% endif %}
             {% if status.cpu.load_avg %}<div class="stat"><label>Load Average</label><span class="val">{{ status.cpu.load_avg | join(', ') }}</span></div>{% endif %}
             {% if status.cpu_temp is not none %}<div class="stat"><label>CPU Temp</label><span class="val">{{ status.cpu_temp }}°C</span></div>{% endif %}
         </div>
     </div>
+
+    <!-- Thermal Overview (compact stats) -->
+    <div class="card" id="card-thermal">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-orange">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+            </div>
+            <h3>Thermal Overview</h3>
+        </div>
+        <div id="thermal-content">
+            {% if status.sensors or (status.gpu and status.gpu.temperature is not none) %}
+            {% set s = status.sensors %}
+            <div class="stat"><label>CPU Package</label><span class="val" style="{{ temp_color(s.cpu_package) if s and s.cpu_package is not none else 'color:var(--muted)' }}">{{ s.cpu_package ~ '°C' if s and s.cpu_package is not none else 'N/A' }}</span></div>
+            <div class="stat"><label>CPU Max Core</label><span class="val" style="{{ temp_color(s.cpu_core_max) if s and s.cpu_core_max is not none else 'color:var(--muted)' }}">{{ s.cpu_core_max ~ '°C' if s and s.cpu_core_max is not none else 'N/A' }}</span></div>
+            <div class="stat"><label>GPU</label><span class="val" style="{{ temp_color(status.gpu.temperature) if status.gpu and status.gpu.temperature is not none else 'color:var(--muted)' }}">{{ status.gpu.temperature ~ '°C' if status.gpu and status.gpu.temperature is not none else 'N/A' }}</span></div>
+            <div class="stat"><label>NVMe</label><span class="val" style="{{ temp_color(s.nvme_temp) if s and s.nvme_temp is not none else 'color:var(--muted)' }}">{{ s.nvme_temp ~ '°C' if s and s.nvme_temp is not none else 'N/A' }}</span></div>
+            <div class="stat"><label>Board Avg</label><span class="val" style="{{ temp_color(s.board_temp_avg) if s and s.board_temp_avg is not none else 'color:var(--muted)' }}">{{ s.board_temp_avg ~ '°C' if s and s.board_temp_avg is not none else 'N/A' }}</span></div>
+            <div class="stat"><label>System</label><span class="val" style="{{ temp_color(s.system_temp) if s and s.system_temp is not none else 'color:var(--muted)' }}">{{ s.system_temp ~ '°C' if s and s.system_temp is not none else 'N/A' }}</span></div>
+            {% else %}
+            <div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">Sensors not available</span></div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ROW 2: Disk | System | Git -->
 
     <!-- Disk -->
     <div class="card" id="card-disk">
@@ -310,6 +235,27 @@
                 <div class="progress-track"><div class="progress-fill {{ 'fill-red' if d.critical else 'fill-orange' if d.warning else 'fill-green' }}" style="width: {{ d.percent }}%"></div></div>
             </div>
             {% endfor %}
+        </div>
+    </div>
+
+    <!-- System -->
+    <div class="card" id="card-system">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </div>
+            <h3>System</h3>
+        </div>
+        <div id="system-content">
+            <div class="stat"><label>Uptime</label><span class="val">{{ status.uptime }}</span></div>
+            {% if status.version %}
+            <div class="stat"><label>Version</label><span class="val"><span class="git-hash">{{ status.version.commit }}</span></span></div>
+            {% endif %}
+            {% if status.databases %}
+            {% for db in status.databases %}
+            <div class="stat"><label>{{ db.name }}</label><span class="val">{{ db.size_kb }} KB</span></div>
+            {% endfor %}
+            {% endif %}
         </div>
     </div>
 
@@ -347,37 +293,26 @@
         </div>
     </div>
 
-    <!-- Database -->
-    <div class="card" id="card-storage">
+    <!-- ROW 3: Thermal Details (full width, collapsible) -->
+    <div class="card card-full" id="card-thermal-details" style="{{ '' if status.sensors and status.sensors.cores else 'display:none' }}">
         <div class="card-header">
-            <div class="card-header-icon metric-icon-cyan">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            <div class="card-header-icon metric-icon-orange">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
             </div>
-            <h3>Storage</h3>
+            <h3>Thermal Details</h3>
+            <button class="btn btn-ghost btn-sm" onclick="toggleThermalDetails()" id="thermal-toggle-btn" style="margin-left:auto;font-size:0.72rem">Hide Details</button>
         </div>
-        <div id="db-content">
-            {% if status.databases %}
-            {% for db in status.databases %}
-            <div class="stat"><label>{{ db.name }}</label><span class="val">{{ db.size_kb }} KB</span></div>
+        <div id="thermal-details-content">
+            {% if status.sensors and status.sensors.cores %}
+            {% macro temp_fill(t) %}{{ 'fill-red' if t > 70 else 'fill-orange' if t >= 50 else 'fill-green' }}{% endmacro %}
+            <div class="thermal-cores-grid">
+            {% for c in status.sensors.cores %}
+            <div class="progress-row">
+                <div class="progress-header"><span class="progress-label">Core {{ c.core }}</span><span class="progress-value">{{ c.temp }}°C</span></div>
+                <div class="progress-track"><div class="progress-fill {{ temp_fill(c.temp) }}" style="width: {{ [c.temp, 100] | min }}%"></div></div>
+            </div>
             {% endfor %}
-            {% else %}
-            <div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">No database files detected</span></div>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- System -->
-    <div class="card" id="card-system">
-        <div class="card-header">
-            <div class="card-header-icon metric-icon-blue">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </div>
-            <h3>System</h3>
-        </div>
-        <div id="system-content">
-            <div class="stat"><label>Uptime</label><span class="val">{{ status.uptime }}</span></div>
-            {% if status.version %}
-            <div class="stat"><label>Version</label><span class="val"><span class="git-hash">{{ status.version.commit }}</span></span></div>
             {% endif %}
         </div>
     </div>
@@ -410,16 +345,27 @@ function tempFill(t) {
     return 'fill-green';
 }
 
-function toggleCoreTemps() {
-    const el = document.getElementById('core-temps-detail');
-    const btn = document.getElementById('core-toggle-btn');
+function tempColor(t) {
+    if (t > 70) return 'color:var(--red)';
+    if (t >= 50) return 'color:var(--orange)';
+    return 'color:var(--green)';
+}
+
+function tempStat(label, t) {
+    if (t == null) return `<div class="stat"><label>${label}</label><span class="val" style="color:var(--muted)">N/A</span></div>`;
+    return `<div class="stat"><label>${label}</label><span class="val" style="${tempColor(t)}">${t}°C</span></div>`;
+}
+
+function toggleThermalDetails() {
+    const el = document.getElementById('thermal-details-content');
+    const btn = document.getElementById('thermal-toggle-btn');
     if (!el) return;
     if (el.style.display === 'none') {
         el.style.display = 'block';
-        if (btn) btn.textContent = 'Hide Cores';
+        if (btn) btn.textContent = 'Hide Details';
     } else {
         el.style.display = 'none';
-        if (btn) btn.textContent = 'Show Cores';
+        if (btn) btn.textContent = 'Show Details';
     }
 }
 
@@ -516,70 +462,45 @@ function updateDashboard(data) {
         document.getElementById('gpu-content').innerHTML = '<div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">Not available</span></div>';
     }
 
-    /* Thermal Overview */
+    /* Thermal Overview (compact stats) */
     const thermalEl = document.getElementById('thermal-content');
     if (thermalEl) {
         const s = data.sensors;
         const gpuT = data.gpu ? data.gpu.temperature : null;
-        const naRow = (label) => `<div class="stat"><label>${label}</label><span class="val" style="color:var(--muted)">N/A</span></div>`;
-        const tempBar = (label, t) => makeBar(label, t+'°C', t, tempFill(t));
-
         if (s || gpuT != null) {
-            let h = '<div class="thermal-grid">';
-
-            // CPU section
-            h += '<div class="thermal-section"><div class="thermal-section-title">CPU</div>';
-            if (s && s.cpu_package != null) h += tempBar('Package', s.cpu_package);
-            if (s && s.cpu_core_max != null) h += tempBar('Max Core', s.cpu_core_max);
-            if (s && s.cpu_core_avg != null) h += tempBar('Avg Core', s.cpu_core_avg);
-            if (!s || (s.cpu_package == null && s.cpu_core_max == null && s.cpu_core_avg == null)) h += naRow('Temperature');
-            h += '</div>';
-
-            // GPU section
-            h += '<div class="thermal-section"><div class="thermal-section-title">GPU</div>';
-            if (gpuT != null) h += tempBar('Temperature', gpuT);
-            else h += naRow('Temperature');
-            h += '</div>';
-
-            // Storage section
-            h += '<div class="thermal-section"><div class="thermal-section-title">Storage</div>';
-            if (s && s.nvme_temp != null) h += tempBar('NVMe', s.nvme_temp);
-            else h += naRow('NVMe');
-            h += '</div>';
-
-            // System section
-            h += '<div class="thermal-section"><div class="thermal-section-title">System</div>';
-            if (s && s.board_temp_avg != null) h += tempBar('Board Avg', s.board_temp_avg);
-            if (s && s.system_temp != null) h += tempBar('ACPI', s.system_temp);
-            if (!s || (s.board_temp_avg == null && s.system_temp == null)) h += naRow('Temperature');
-            h += '</div>';
-
-            h += '</div>';
+            let h = '';
+            h += tempStat('CPU Package', s ? s.cpu_package : null);
+            h += tempStat('CPU Max Core', s ? s.cpu_core_max : null);
+            h += tempStat('GPU', gpuT);
+            h += tempStat('NVMe', s ? s.nvme_temp : null);
+            h += tempStat('Board Avg', s ? s.board_temp_avg : null);
+            h += tempStat('System', s ? s.system_temp : null);
             thermalEl.innerHTML = h;
-
-            // Per-core detail
-            const coreEl = document.getElementById('core-temps-detail');
-            const toggleBtn = document.getElementById('core-toggle-btn');
-            if (s && s.cores && s.cores.length > 0 && coreEl) {
-                toggleBtn.style.display = '';
-                let ch = '<div class="thermal-cores-grid">';
-                for (const c of s.cores) ch += makeBar('Core '+c.core, c.temp+'°C', c.temp, tempFill(c.temp));
-                ch += '</div>';
-                coreEl.innerHTML = ch;
-            } else if (toggleBtn) {
-                toggleBtn.style.display = 'none';
-            }
         } else {
             thermalEl.innerHTML = '<div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">Sensors not available</span></div>';
-            const toggleBtn = document.getElementById('core-toggle-btn');
-            if (toggleBtn) toggleBtn.style.display = 'none';
         }
     }
 
-    /* CPU/RAM */
+    /* Thermal Details (per-core bars) */
+    const detailsCard = document.getElementById('card-thermal-details');
+    const detailsEl = document.getElementById('thermal-details-content');
+    if (detailsCard && detailsEl) {
+        const s = data.sensors;
+        if (s && s.cores && s.cores.length > 0) {
+            detailsCard.style.display = '';
+            let ch = '<div class="thermal-cores-grid">';
+            for (const c of s.cores) ch += makeBar('Core '+c.core, c.temp+'°C', c.temp, tempFill(c.temp));
+            ch += '</div>';
+            detailsEl.innerHTML = ch;
+        } else {
+            detailsCard.style.display = 'none';
+        }
+    }
+
+    /* CPU/RAM (stat rows) */
     if (data.cpu && data.memory) {
-        let h = makeBar('CPU Usage', data.cpu.percent+'%', data.cpu.percent, fillClass(data.cpu.percent,70,90));
-        h += makeBar('RAM', data.memory.used_gb+' / '+data.memory.total_gb+' GB ('+data.memory.percent+'%)', data.memory.percent, data.memory.percent>90?'fill-red':data.memory.percent>75?'fill-orange':'fill-blue');
+        let h = `<div class="stat"><label>CPU Usage</label><span class="val">${data.cpu.percent}%</span></div>`;
+        h += `<div class="stat"><label>RAM</label><span class="val">${data.memory.used_gb} / ${data.memory.total_gb} GB (${data.memory.percent}%)</span></div>`;
         h += `<div class="stat"><label>Cores</label><span class="val">${data.cpu.count}</span></div>`;
         if (data.cpu.freq) h += `<div class="stat"><label>Frequency</label><span class="val">${data.cpu.freq} MHz</span></div>`;
         if (data.cpu.load_avg) h += `<div class="stat"><label>Load Average</label><span class="val">${data.cpu.load_avg.join(', ')}</span></div>`;
@@ -620,29 +541,18 @@ function updateDashboard(data) {
         document.getElementById('git-content').innerHTML = h;
     }
 
-    /* DB */
-    if (data.databases && data.databases.length > 0) {
-        let h = '';
-        for (const db of data.databases) h += `<div class="stat"><label>${db.name}</label><span class="val">${db.size_kb} KB</span></div>`;
-        if (data.admin_db_size != null) {
-            const sizeKb = (data.admin_db_size / 1024).toFixed(1);
-            h += `<div class="stat"><label>admin.db</label><span class="val">${sizeKb} KB</span></div>`;
-        }
-        document.getElementById('db-content').innerHTML = h;
-    } else {
-        let h = '<div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">No database files detected</span></div>';
-        if (data.admin_db_size != null) {
-            const sizeKb = (data.admin_db_size / 1024).toFixed(1);
-            h += `<div class="stat"><label>admin.db</label><span class="val">${sizeKb} KB</span></div>`;
-        }
-        document.getElementById('db-content').innerHTML = h;
-    }
-
-    /* System */
+    /* System (includes DB info) */
     if (data.uptime || data.version) {
         let h = '';
         if (data.uptime) h += `<div class="stat"><label>Uptime</label><span class="val">${data.uptime}</span></div>`;
         if (data.version) h += `<div class="stat"><label>Version</label><span class="val"><span class="git-hash">${data.version.commit}</span></span></div>`;
+        if (data.databases && data.databases.length > 0) {
+            for (const db of data.databases) h += `<div class="stat"><label>${db.name}</label><span class="val">${db.size_kb} KB</span></div>`;
+        }
+        if (data.admin_db_size != null) {
+            const sizeKb = (data.admin_db_size / 1024).toFixed(1);
+            h += `<div class="stat"><label>admin.db</label><span class="val">${sizeKb} KB</span></div>`;
+        }
         document.getElementById('system-content').innerHTML = h;
     }
 }
