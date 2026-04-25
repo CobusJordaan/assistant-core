@@ -301,10 +301,15 @@
             appendMessage('user', text);
             appendMessage('assistant', data.reply_text);
 
-            // Play audio
-            if (data.audio_url) {
-                playAudio(data.audio_url);
-            } else {
+            // Play audio (errors here should not show "something went wrong")
+            try {
+                if (data.audio_url) {
+                    playAudio(data.audio_url);
+                } else {
+                    cleanupVoice();
+                }
+            } catch (audioErr) {
+                console.error('Audio playback error:', audioErr);
                 cleanupVoice();
             }
         } catch (e) {
@@ -324,31 +329,39 @@
             audioElement = new Audio();
         }
 
-        // Connect audio to analyser for playback waveform
-        if (audioContext && audioContext.state === 'closed') {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-
         audioElement.src = url;
 
-        // Create analyser for playback visualization
-        if (!audioSourceNode) {
-            try {
-                audioSourceNode = audioContext.createMediaElementSource(audioElement);
-            } catch (e) {
-                // Already connected — reuse
+        // Set up audio visualization (non-critical — audio plays even if this fails)
+        try {
+            if (audioContext && audioContext.state === 'closed') {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                audioSourceNode = null; // old node is dead with old context
             }
-        }
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256;
-        if (audioSourceNode) {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            // Resume context if suspended (Chrome autoplay policy)
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
+            // Create source node only once per audio element
+            if (!audioSourceNode) {
+                audioSourceNode = audioContext.createMediaElementSource(audioElement);
+            }
+
+            // Disconnect old connections, set up fresh analyser
+            audioSourceNode.disconnect();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
             audioSourceNode.connect(analyser);
             analyser.connect(audioContext.destination);
+            animateWaveform();
+        } catch (e) {
+            console.warn('Audio visualization setup failed:', e);
+            // Audio will still play without waveform
         }
-        animateWaveform();
 
         audioElement.onended = function () {
             cleanupVoice();
