@@ -2,14 +2,21 @@
 
 import re
 
-# Image generation patterns — "create/generate/draw/make" + "image/picture/photo/art"
+# Image generation patterns
+# Group 1: action verb + noun  ("make me a image", "create an illustration")
+# Group 2: noun + action verb  ("image, create one")
+# Group 3: standalone triggers  ("image of", "picture of", "draw me", "photo of")
+# Group 4: Dutch variants
 _IMAGE_GEN_RE = re.compile(
     r"\b(?:create|generate|draw|make|paint|design|render|sketch)\b"
-    r".*\b(?:image|picture|photo|art|illustration|portrait|logo|icon|wallpaper|poster)\b"
+    r".*\b(?:an?\s+)?(?:image|picture|photo|art|illustration|portrait|logo|icon|wallpaper|poster)\b"
     r"|\b(?:image|picture|photo|art|illustration|portrait|logo|icon)\b"
     r".*\b(?:create|generate|draw|make|paint|design|render|sketch)\b"
-    r"|\b(?:maak|teken|genereer)\b"  # Dutch variants
-    r".*\b(?:foto|afbeelding|plaatje|tekening|beeld)\b",
+    r"|\b(?:image|picture|photo|illustration|portrait|logo|icon)\s+(?:of|for|with)\b"
+    r"|\b(?:draw|paint|sketch)\s+(?:me|us|a|an|the)\b"
+    r"|\b(?:maak|teken|genereer)\b"
+    r".*\b(?:foto|afbeelding|plaatje|tekening|beeld)\b"
+    r"|\b(?:foto|afbeelding|plaatje|tekening|beeld)\s+(?:van|voor|met)\b",
     re.IGNORECASE,
 )
 

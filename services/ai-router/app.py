@@ -174,7 +174,14 @@ async def chat_completions(
 
     # Route based on intent
     if intent == "image_gen":
-        return await _handle_image_generation(user_text, req)
+        result = await _handle_image_generation(user_text, req)
+        if req.stream:
+            # Wrap the image response as SSE so streaming clients can parse it
+            return StreamingResponse(
+                _wrap_as_sse(result),
+                media_type="text/event-stream",
+            )
+        return result
 
     # Select Ollama model
     model_map = {
@@ -374,6 +381,34 @@ async def _non_streaming_ollama(
 # Image generation handler
 # ---------------------------------------------------------------------------
 
+async def _wrap_as_sse(result: dict) -> AsyncIterator[str]:
+    """Wrap a non-streaming chat response as SSE chunks for streaming clients."""
+    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+    chat_id = result.get("id", f"chatcmpl-{uuid.uuid4().hex[:12]}")
+    created = result.get("created", int(time.time()))
+    model = result.get("model", "draadloze-ai")
+
+    if content:
+        chunk = {
+            "id": chat_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [{"delta": {"content": content}, "index": 0, "finish_reason": None}],
+        }
+        yield f"data: {json.dumps(chunk)}\n\n"
+
+    final_chunk = {
+        "id": chat_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{"delta": {}, "index": 0, "finish_reason": "stop"}],
+    }
+    yield f"data: {json.dumps(final_chunk)}\n\n"
+    yield "data: [DONE]\n\n"
+
+
 async def _handle_image_generation(user_text: str, req: ChatCompletionRequest) -> dict:
     """Route image generation requests to Image Bridge."""
     logger.info("Routing to Image Bridge for image generation")
@@ -394,21 +429,23 @@ async def _handle_image_generation(user_text: str, req: ChatCompletionRequest) -
         "response_format": "url",
     }
 
+    image_url = f"{_config.image_bridge_url}/v1/images/generations"
+    logger.info("Image Bridge request: url=%s, prompt=%r", image_url, user_text[:80])
+
     try:
         async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(
-                f"{_config.image_bridge_url}/v1/images/generations",
-                json=body,
-                headers=headers,
-            )
+            resp = await client.post(image_url, json=body, headers=headers)
+            logger.info("Image Bridge response: status=%d", resp.status_code)
             resp.raise_for_status()
             data = resp.json()
+            logger.info("Image Bridge data keys: %s", list(data.keys()))
     except Exception as e:
         logger.error("Image Bridge error: %s", e)
         return _chat_response(f"Sorry, image generation failed: {e}")
 
     # Build markdown response with image URLs
     images = data.get("data", [])
+    logger.info("Image Bridge returned %d image(s)", len(images))
     if not images:
         return _chat_response("Image generation returned no results.")
 

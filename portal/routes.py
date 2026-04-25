@@ -199,6 +199,7 @@ async def api_chat(request: Request):
 async def _stream_chat(db, conv_id: int, user_id: int, today: str, messages: list):
     """Stream AI Router response as SSE to the browser."""
     full_response = ""
+    image_url = ""
 
     try:
         timeouts = httpx.Timeout(connect=10.0, read=300.0, write=10.0, pool=10.0)
@@ -208,11 +209,13 @@ async def _stream_chat(db, conv_id: int, user_id: int, today: str, messages: lis
                 "messages": messages,
                 "stream": True,
             }
+            logger.info("Sending to AI Router: stream=True, messages=%d", len(messages))
             async with client.stream("POST", f"{AI_ROUTER_URL}/v1/chat/completions",
                                       json=payload,
                                       headers={"X-Admin-Test": "true"}) as resp:
                 if resp.status_code != 200:
                     body = await resp.aread()
+                    logger.error("AI Router error: status=%d body=%s", resp.status_code, body[:500])
                     error_msg = f"AI service error: {resp.status_code}"
                     yield f"data: {json.dumps({'error': error_msg})}\n\n"
                     yield "data: [DONE]\n\n"
@@ -244,9 +247,17 @@ async def _stream_chat(db, conv_id: int, user_id: int, today: str, messages: lis
         yield f"data: {json.dumps({'error': error_msg})}\n\n"
         full_response = error_msg
 
+    # Extract image URL from markdown if present (e.g. ![alt](http://...))
+    import re
+    img_match = re.search(r'!\[[^\]]*\]\((https?://[^)]+)\)', full_response)
+    if img_match:
+        image_url = img_match.group(1)
+        logger.info("Image URL detected in response: %s", image_url)
+
     # Save assistant response
     if full_response:
-        db.add_message(conv_id, "assistant", full_response)
+        db.add_message(conv_id, "assistant", full_response, image_url=image_url)
+        logger.info("Saved assistant message: len=%d, has_image=%s", len(full_response), bool(image_url))
 
     yield "data: [DONE]\n\n"
 
