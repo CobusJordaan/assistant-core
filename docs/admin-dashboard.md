@@ -3,7 +3,7 @@
 ## 1. Install Dependencies
 
 ```bash
-pip install psutil jinja2 itsdangerous "passlib[bcrypt]"
+pip install psutil jinja2 itsdangerous bcrypt python-multipart
 ```
 
 Or install everything:
@@ -44,15 +44,54 @@ Docker: the service user must be in the `docker` group (no sudo needed).
 
 ## 5. SSH Key for Git Pull
 
-Git pull uses non-interactive SSH. The deploy key must not require a passphrase:
+### Why git pull fails from the dashboard
+
+`git pull` works fine in your SSH terminal because your interactive shell has
+`ssh-agent` loaded with the key unlocked. However, assistant-core runs under
+**systemd**, which does **not** inherit `SSH_AUTH_SOCK` from any interactive
+session. This means passphrase-protected SSH keys will always fail when
+triggered from the web dashboard.
+
+### Fix options (choose one)
+
+**Option A — Deploy key without passphrase (recommended)**
+
+Create a dedicated SSH key with no passphrase and add it as a deploy key in
+your GitHub repo settings:
 
 ```bash
-# Test SSH access
-ssh -o BatchMode=yes -T git@github.com
-
-# If it fails, set up a deploy key without passphrase
+# Generate key (no passphrase)
 ssh-keygen -t ed25519 -f ~/.ssh/deploy_key -N ""
+
+# Add the public key to GitHub → repo → Settings → Deploy keys
+cat ~/.ssh/deploy_key.pub
+
+# Configure this repo to use the deploy key
+cd /opt/ai-assistant/services/assistant-core
+git config core.sshCommand "ssh -i ~/.ssh/deploy_key -o BatchMode=yes"
+
+# Test
+ssh -i ~/.ssh/deploy_key -o BatchMode=yes -T git@github.com
 ```
+
+**Option B — Point systemd to a persistent ssh-agent socket**
+
+If you have a persistent agent (e.g. GNOME Keyring or a systemd user agent),
+add to `.env`:
+
+```env
+GIT_SSH_AUTH_SOCK=/run/user/1000/keyring/ssh
+```
+
+The dashboard will inject this as `SSH_AUTH_SOCK` when running git commands.
+
+**Option C — Switch to HTTPS with a personal access token**
+
+```bash
+git remote set-url origin https://<token>@github.com/user/repo.git
+```
+
+No SSH needed, but the token is stored in the git remote URL.
 
 ## 6. Restart assistant-core
 

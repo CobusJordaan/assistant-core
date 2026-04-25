@@ -1,4 +1,17 @@
-"""Git operations with non-interactive SSH handling."""
+"""Git operations with non-interactive SSH handling.
+
+SSH context:
+  CLI git pull works because the interactive shell has ssh-agent loaded.
+  The admin dashboard runs under systemd, which does NOT inherit SSH_AUTH_SOCK
+  from any interactive session. This means passphrase-protected SSH keys will
+  always fail from the web dashboard.
+
+Production-safe options:
+  1. (Recommended) Use a GitHub deploy key WITHOUT passphrase for this repo.
+  2. Set GIT_SSH_AUTH_SOCK in .env to point to a persistent ssh-agent socket
+     (e.g. /run/user/1000/keyring/ssh or a systemd-managed agent).
+  3. Switch the remote to HTTPS with a personal access token.
+"""
 
 import os
 import subprocess
@@ -13,12 +26,23 @@ REPO_DIR = os.getenv(
     "/opt/ai-assistant/services/assistant-core",
 )
 
-# Non-interactive SSH: no passphrase prompt, no host key prompt
-_GIT_ENV = {
-    **os.environ,
-    "GIT_TERMINAL_PROMPT": "0",
-    "GIT_SSH_COMMAND": "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
-}
+# Optional: allow injecting SSH_AUTH_SOCK for systemd environments
+_SSH_AUTH_SOCK = os.getenv("GIT_SSH_AUTH_SOCK", "").strip()
+
+
+def _build_git_env() -> dict:
+    """Build environment for git commands with non-interactive SSH."""
+    env = {
+        **os.environ,
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_SSH_COMMAND": "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
+    }
+    # If a custom SSH_AUTH_SOCK is configured, inject it so systemd can reach an agent
+    if _SSH_AUTH_SOCK:
+        env["SSH_AUTH_SOCK"] = _SSH_AUTH_SOCK
+        logger.debug("Using GIT_SSH_AUTH_SOCK: %s", _SSH_AUTH_SOCK)
+    return env
+
 
 _SSH_ERROR_KEYWORDS = [
     "enter passphrase",
@@ -28,10 +52,25 @@ _SSH_ERROR_KEYWORDS = [
 ]
 
 _SSH_FIX_MESSAGE = (
-    "Fix options:\n"
-    "1. Run: eval $(ssh-agent) && ssh-add ~/.ssh/id_ed25519\n"
-    "2. Use a GitHub deploy key without passphrase\n"
-    "3. Switch remote to HTTPS with a personal access token"
+    "Git pull failed from the web dashboard.\n"
+    "\n"
+    "WHY: assistant-core runs under systemd, which does not inherit\n"
+    "SSH_AUTH_SOCK from your interactive terminal. Even if ssh-agent\n"
+    "is loaded in your CLI session, the web service cannot see it.\n"
+    "\n"
+    "FIX (choose one):\n"
+    "\n"
+    "1. (Recommended) Use a GitHub deploy key WITHOUT passphrase:\n"
+    "   ssh-keygen -t ed25519 -f ~/.ssh/deploy_key -N \"\"\n"
+    "   Add the public key as a deploy key in GitHub repo settings.\n"
+    "   Then set in the repo:\n"
+    "   git config core.sshCommand \"ssh -i ~/.ssh/deploy_key -o BatchMode=yes\"\n"
+    "\n"
+    "2. Set GIT_SSH_AUTH_SOCK in .env to a persistent agent socket:\n"
+    "   GIT_SSH_AUTH_SOCK=/run/user/1000/keyring/ssh\n"
+    "\n"
+    "3. Switch remote to HTTPS with a personal access token:\n"
+    "   git remote set-url origin https://<token>@github.com/user/repo.git"
 )
 
 
@@ -46,7 +85,7 @@ def _run_git(args: list[str], timeout: int = 15) -> dict:
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout,
-            env=_GIT_ENV, cwd=REPO_DIR,
+            env=_build_git_env(), cwd=REPO_DIR,
         )
         stdout = mask_sensitive(result.stdout)
         stderr = mask_sensitive(result.stderr)
@@ -103,7 +142,10 @@ def pull(user: str = "admin") -> dict:
         output_lower = result["output"].lower()
         is_ssh_error = any(kw in output_lower for kw in _SSH_ERROR_KEYWORDS)
         if is_ssh_error:
-            result["message"] = "Git pull failed — SSH key requires passphrase."
+            result["message"] = (
+                "Git pull failed — SSH key not accessible from systemd. "
+                "See fix options below."
+            )
             result["output"] = _SSH_FIX_MESSAGE
 
     status = "SUCCESS" if result["success"] else "FAILED"
