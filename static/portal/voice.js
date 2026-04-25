@@ -135,7 +135,7 @@
 
     // --- Browser Speech API ---
     let silenceTimer = null;
-    const SILENCE_TIMEOUT = 1500; // ms of silence before auto-stop
+    const SILENCE_TIMEOUT = 3000; // ms of silence before auto-stop
 
     function startBrowserSTT() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -341,55 +341,47 @@
         statusEl.textContent = 'Speaking...';
         overlay.classList.add('speaking');
 
+        // Use a plain Audio element — no AudioContext routing
+        // This avoids issues where AudioContext captures audio output
+        // and then fails to route it to speakers
         if (!audioElement) {
             audioElement = new Audio();
         }
 
         audioElement.src = url;
 
-        // Set up audio visualization (non-critical — audio plays even if this fails)
-        try {
-            if (audioContext && audioContext.state === 'closed') {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                audioSourceNode = null; // old node is dead with old context
-            }
-            if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
-
-            // Resume context if suspended (Chrome autoplay policy)
-            if (audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
-
-            // Create source node only once per audio element
-            if (!audioSourceNode) {
-                audioSourceNode = audioContext.createMediaElementSource(audioElement);
-            }
-
-            // Disconnect old connections, set up fresh analyser
-            audioSourceNode.disconnect();
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
-            audioSourceNode.connect(analyser);
-            analyser.connect(audioContext.destination);
-            animateWaveform();
-        } catch (e) {
-            console.warn('Audio visualization setup failed:', e);
-            // Audio will still play without waveform
-        }
+        // Simple bar animation during playback (no frequency data needed)
+        animateSpeakingBars();
 
         audioElement.onended = function () {
             cleanupVoice();
         };
 
         audioElement.onerror = function () {
+            console.error('Audio playback error');
             cleanupVoice();
         };
 
-        audioElement.play().catch(function () {
+        audioElement.play().catch(function (e) {
+            console.error('Audio play failed:', e);
             cleanupVoice();
         });
+    }
+
+    // --- Simple speaking animation (no AudioContext needed) ---
+    function animateSpeakingBars() {
+        if (!barsContainer) return;
+        const bars = barsContainer.children;
+
+        function draw() {
+            if (voiceState !== 'speaking') return;
+            for (let i = 0; i < bars.length; i++) {
+                const height = 10 + Math.random() * 50;
+                bars[i].style.height = height + 'px';
+            }
+            animFrame = requestAnimationFrame(draw);
+        }
+        draw();
     }
 
     // --- Waveform animation ---

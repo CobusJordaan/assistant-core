@@ -1,5 +1,5 @@
 // Draadloze AI — Service Worker (app shell caching)
-const CACHE_NAME = 'draadloze-ai-v4';
+const CACHE_NAME = 'draadloze-ai-v6';
 const SHELL_ASSETS = [
     '/static/portal/portal.css',
     '/static/portal/chat.js',
