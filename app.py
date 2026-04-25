@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Any
 
@@ -135,6 +136,11 @@ app.include_router(memory_router)
 # Mount account analysis routes
 from account_analysis_handler import router as analysis_router
 app.include_router(analysis_router)
+
+# Mount admin dashboard
+from admin import admin_router
+app.include_router(admin_router)
+app.mount("/static/admin", StaticFiles(directory="static/admin"), name="admin-static")
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Admin{% endblock %} — assistant-core</title>
+    <link rel="stylesheet" href="/static/admin/admin.css">
+</head>
+<body>
+    <nav class="admin-nav">
+        <span class="nav-brand">assistant-core admin</span>
+        <div class="nav-links">
+            <a href="/admin" class="{% if active_page == 'dashboard' %}active{% endif %}">Dashboard</a>
+            <a href="/admin/logs" class="{% if active_page == 'logs' %}active{% endif %}">Logs</a>
+            <a href="/admin/logout">Logout</a>
+        </div>
+    </nav>
+
+    <div class="summary-bar" id="summary-bar">
+        <div class="summary-item">CPU <span class="val" id="sum-cpu">—</span></div>
+        <div class="summary-item">RAM <span class="val" id="sum-ram">—</span></div>
+        <div class="summary-item">GPU <span class="val" id="sum-gpu">—</span></div>
+        <div class="summary-item">Disk <span class="val" id="sum-disk">—</span></div>
+        <div class="summary-item">Services <span class="val" id="sum-svc">—</span></div>
+    </div>
+
+    <main class="admin-main">
+        <div class="controls-bar">
+            <div class="last-updated">
+                <span class="live-dot" id="live-dot"></span>
+                <span id="last-updated-text">Loading…</span>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="refreshNow()">Refresh Now</button>
+        </div>
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+        let autoRefreshInterval = null;
+
+        async function fetchStatus() {
+            try {
+                const r = await fetch('/admin/api/status');
+                if (r.status === 401) { window.location.href = '/admin/login'; return; }
+                const data = await r.json();
+                updateSummaryBar(data);
+                if (typeof updateDashboard === 'function') updateDashboard(data);
+                document.getElementById('last-updated-text').textContent = 'Updated ' + new Date().toLocaleTimeString();
+            } catch (e) {
+                document.getElementById('last-updated-text').textContent = 'Refresh failed';
+            }
+        }
+
+        function updateSummaryBar(data) {
+            if (data.cpu) document.getElementById('sum-cpu').textContent = data.cpu.percent + '%';
+            if (data.memory) document.getElementById('sum-ram').textContent = data.memory.percent + '%';
+            if (data.gpu) {
+                document.getElementById('sum-gpu').textContent = data.gpu.utilization + '% ' + data.gpu.temperature + '°C';
+            } else {
+                document.getElementById('sum-gpu').textContent = 'N/A';
+            }
+            if (data.disks && data.disks.length > 0) {
+                const root = data.disks.find(d => d.mount === '/') || data.disks[0];
+                document.getElementById('sum-disk').textContent = root.percent + '%';
+            }
+            if (data.services) {
+                const svcs = Object.values(data.services.services || {});
+                const ctrs = Object.values(data.services.containers || {});
+                const total = svcs.length + ctrs.length;
+                const up = svcs.filter(s => s.active).length + ctrs.filter(c => c.running).length;
+                document.getElementById('sum-svc').textContent = up + '/' + total;
+            }
+        }
+
+        function refreshNow() { fetchStatus(); }
+
+        function startAutoRefresh() {
+            fetchStatus();
+            autoRefreshInterval = setInterval(fetchStatus, 10000);
+        }
+
+        {% block scripts %}{% endblock %}
+
+        document.addEventListener('DOMContentLoaded', startAutoRefresh);
+    </script>
+</body>
+</html>

@@ -1,0 +1,281 @@
+{% extends "admin/base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="card-grid">
+
+    <!-- Services -->
+    <div class="card">
+        <h3>Services</h3>
+        <div id="services-content">
+            {% for name, svc in status.services.services.items() %}
+            <div class="svc-row">
+                <div class="svc-name">
+                    <span class="status-dot {{ 'dot-green' if svc.active else 'dot-red' }}"></span>
+                    {{ name }}
+                </div>
+                <div>
+                    <span class="svc-status">{{ svc.status_text }}</span>
+                    <form class="inline-form" onsubmit="return doAction(event, '/admin/action/restart-service', {name: '{{ name }}'}, this)">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-warning btn-sm">
+                            <span class="spinner spinner-hidden"></span> Restart
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+
+            {% for name, ctr in status.services.containers.items() %}
+            <div class="svc-row">
+                <div class="svc-name">
+                    <span class="status-dot {{ 'dot-green' if ctr.running else 'dot-red' }}"></span>
+                    {{ name }} <small>(container)</small>
+                </div>
+                <div>
+                    <span class="svc-status">{{ ctr.status_text }}</span>
+                    <form class="inline-form" onsubmit="return doAction(event, '/admin/action/restart-container', {name: '{{ name }}'}, this)">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-warning btn-sm">
+                            <span class="spinner spinner-hidden"></span> Restart
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- GPU -->
+    <div class="card">
+        <h3>GPU</h3>
+        <div id="gpu-content">
+            {% if status.gpu %}
+            <div class="stat"><label>Model</label><span class="val">{{ status.gpu.name }}</span></div>
+            <div class="stat"><label>Temperature</label><span class="val">{{ status.gpu.temperature }}°C</span></div>
+            <div class="stat"><label>Utilization</label><span class="val">{{ status.gpu.utilization }}%</span></div>
+            <div class="stat"><label>VRAM</label><span class="val">{{ status.gpu.memory_used }} / {{ status.gpu.memory_total }} MB</span></div>
+            <div class="stat"><label>Power</label><span class="val">{{ status.gpu.power_draw }} / {{ status.gpu.power_limit }} W</span></div>
+            <div class="stat"><label>Fan</label><span class="val">{{ status.gpu.fan_speed }}%</span></div>
+            {% else %}
+            <div class="stat"><label>Status</label><span class="val">Not available</span></div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- CPU / RAM -->
+    <div class="card">
+        <h3>CPU / RAM</h3>
+        <div id="cpu-content">
+            <div class="stat"><label>CPU Usage</label><span class="val">{{ status.cpu.percent }}%</span></div>
+            <div class="stat"><label>Cores</label><span class="val">{{ status.cpu.count }}</span></div>
+            {% if status.cpu.freq %}
+            <div class="stat"><label>Frequency</label><span class="val">{{ status.cpu.freq }} MHz</span></div>
+            {% endif %}
+            {% if status.cpu.load_avg %}
+            <div class="stat"><label>Load Avg</label><span class="val">{{ status.cpu.load_avg | join(', ') }}</span></div>
+            {% endif %}
+            {% if status.cpu_temp is not none %}
+            <div class="stat"><label>CPU Temp</label><span class="val">{{ status.cpu_temp }}°C</span></div>
+            {% endif %}
+            <div class="stat"><label>RAM Used</label><span class="val">{{ status.memory.used_gb }} / {{ status.memory.total_gb }} GB ({{ status.memory.percent }}%)</span></div>
+        </div>
+    </div>
+
+    <!-- Disk -->
+    <div class="card">
+        <h3>Disk</h3>
+        <div id="disk-content">
+            {% for d in status.disks %}
+            <div class="stat">
+                <label>{{ d.mount }}</label>
+                <span class="val {{ 'disk-critical' if d.critical else 'disk-warning' if d.warning else '' }}">
+                    {{ d.used_gb }} / {{ d.total_gb }} GB ({{ d.percent }}%)
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Git -->
+    <div class="card">
+        <h3>Git Repository</h3>
+        <div id="git-content">
+            <div class="stat"><label>Branch</label><span class="val">{{ status.git.branch }}</span></div>
+            <div class="stat"><label>Status</label><span class="val">{{ 'Clean' if status.git.clean else 'Dirty (' + status.git.dirty_files|string + ' files)' }}</span></div>
+            {% if status.git.last_commit %}
+            <div class="stat"><label>Last Commit</label><span class="val">{{ status.git.last_commit.hash }} — {{ status.git.last_commit.message }}</span></div>
+            <div class="stat"><label>When</label><span class="val">{{ status.git.last_commit.relative_time }}</span></div>
+            {% endif %}
+        </div>
+        <div style="margin-top: 0.5rem;">
+            <form class="inline-form" onsubmit="return doAction(event, '/admin/action/git-pull', {}, this)">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <span class="spinner spinner-hidden"></span> Git Pull
+                </button>
+            </form>
+            <div class="git-output" id="git-output"></div>
+        </div>
+    </div>
+
+    <!-- Database -->
+    <div class="card">
+        <h3>Database / Storage</h3>
+        <div id="db-content">
+            {% for db in status.databases %}
+            <div class="stat"><label>{{ db.name }}</label><span class="val">{{ db.size_kb }} KB</span></div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- System -->
+    <div class="card">
+        <h3>System</h3>
+        <div id="system-content">
+            <div class="stat"><label>Uptime</label><span class="val">{{ status.uptime }}</span></div>
+            {% if status.version %}
+            <div class="stat"><label>Version</label><span class="val">{{ status.version.commit }}</span></div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+function updateDashboard(data) {
+    // Update services
+    if (data.services) {
+        let html = '';
+        const svcs = data.services.services || {};
+        const ctrs = data.services.containers || {};
+        for (const [name, svc] of Object.entries(svcs)) {
+            const dot = svc.active ? 'dot-green' : 'dot-red';
+            html += `<div class="svc-row">
+                <div class="svc-name"><span class="status-dot ${dot}"></span>${name}</div>
+                <div><span class="svc-status">${svc.status_text}</span>
+                <form class="inline-form" onsubmit="return doAction(event, '/admin/action/restart-service', {name:'${name}'}, this)">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-warning btn-sm"><span class="spinner spinner-hidden"></span> Restart</button>
+                </form></div></div>`;
+        }
+        for (const [name, ctr] of Object.entries(ctrs)) {
+            const dot = ctr.running ? 'dot-green' : 'dot-red';
+            html += `<div class="svc-row">
+                <div class="svc-name"><span class="status-dot ${dot}"></span>${name} <small>(container)</small></div>
+                <div><span class="svc-status">${ctr.status_text}</span>
+                <form class="inline-form" onsubmit="return doAction(event, '/admin/action/restart-container', {name:'${name}'}, this)">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-warning btn-sm"><span class="spinner spinner-hidden"></span> Restart</button>
+                </form></div></div>`;
+        }
+        document.getElementById('services-content').innerHTML = html;
+    }
+
+    // Update GPU
+    if (data.gpu) {
+        document.getElementById('gpu-content').innerHTML = `
+            <div class="stat"><label>Model</label><span class="val">${data.gpu.name}</span></div>
+            <div class="stat"><label>Temperature</label><span class="val">${data.gpu.temperature}°C</span></div>
+            <div class="stat"><label>Utilization</label><span class="val">${data.gpu.utilization}%</span></div>
+            <div class="stat"><label>VRAM</label><span class="val">${data.gpu.memory_used} / ${data.gpu.memory_total} MB</span></div>
+            <div class="stat"><label>Power</label><span class="val">${data.gpu.power_draw} / ${data.gpu.power_limit} W</span></div>
+            <div class="stat"><label>Fan</label><span class="val">${data.gpu.fan_speed}%</span></div>`;
+    } else {
+        document.getElementById('gpu-content').innerHTML = '<div class="stat"><label>Status</label><span class="val">Not available</span></div>';
+    }
+
+    // Update CPU/RAM
+    if (data.cpu && data.memory) {
+        let cpuHtml = `<div class="stat"><label>CPU Usage</label><span class="val">${data.cpu.percent}%</span></div>
+            <div class="stat"><label>Cores</label><span class="val">${data.cpu.count}</span></div>`;
+        if (data.cpu.freq) cpuHtml += `<div class="stat"><label>Frequency</label><span class="val">${data.cpu.freq} MHz</span></div>`;
+        if (data.cpu.load_avg) cpuHtml += `<div class="stat"><label>Load Avg</label><span class="val">${data.cpu.load_avg.join(', ')}</span></div>`;
+        if (data.cpu_temp !== null && data.cpu_temp !== undefined) cpuHtml += `<div class="stat"><label>CPU Temp</label><span class="val">${data.cpu_temp}°C</span></div>`;
+        cpuHtml += `<div class="stat"><label>RAM Used</label><span class="val">${data.memory.used_gb} / ${data.memory.total_gb} GB (${data.memory.percent}%)</span></div>`;
+        document.getElementById('cpu-content').innerHTML = cpuHtml;
+    }
+
+    // Update Disk
+    if (data.disks) {
+        let diskHtml = '';
+        for (const d of data.disks) {
+            const cls = d.critical ? 'disk-critical' : d.warning ? 'disk-warning' : '';
+            diskHtml += `<div class="stat"><label>${d.mount}</label><span class="val ${cls}">${d.used_gb} / ${d.total_gb} GB (${d.percent}%)</span></div>`;
+        }
+        document.getElementById('disk-content').innerHTML = diskHtml;
+    }
+
+    // Update Git
+    if (data.git) {
+        const g = data.git;
+        let gitHtml = `<div class="stat"><label>Branch</label><span class="val">${g.branch}</span></div>
+            <div class="stat"><label>Status</label><span class="val">${g.clean ? 'Clean' : 'Dirty (' + g.dirty_files + ' files)'}</span></div>`;
+        if (g.last_commit) {
+            gitHtml += `<div class="stat"><label>Last Commit</label><span class="val">${g.last_commit.hash} — ${g.last_commit.message}</span></div>
+                <div class="stat"><label>When</label><span class="val">${g.last_commit.relative_time}</span></div>`;
+        }
+        document.getElementById('git-content').innerHTML = gitHtml;
+    }
+
+    // Update Databases
+    if (data.databases) {
+        let dbHtml = '';
+        for (const db of data.databases) {
+            dbHtml += `<div class="stat"><label>${db.name}</label><span class="val">${db.size_kb} KB</span></div>`;
+        }
+        document.getElementById('db-content').innerHTML = dbHtml;
+    }
+
+    // Update System
+    if (data.uptime || data.version) {
+        let sysHtml = '';
+        if (data.uptime) sysHtml += `<div class="stat"><label>Uptime</label><span class="val">${data.uptime}</span></div>`;
+        if (data.version) sysHtml += `<div class="stat"><label>Version</label><span class="val">${data.version.commit}</span></div>`;
+        document.getElementById('system-content').innerHTML = sysHtml;
+    }
+}
+
+async function doAction(event, url, extraData, form) {
+    event.preventDefault();
+    const btn = form.querySelector('button');
+    const spinner = form.querySelector('.spinner');
+    const csrfInput = form.querySelector('input[name="csrf_token"]');
+
+    btn.disabled = true;
+    spinner.classList.remove('spinner-hidden');
+
+    const body = new URLSearchParams();
+    body.append('csrf_token', csrfInput.value);
+    for (const [k, v] of Object.entries(extraData)) {
+        body.append(k, v);
+    }
+
+    try {
+        const r = await fetch(url, { method: 'POST', body: body });
+        const result = await r.json();
+
+        if (result.output) {
+            const gitOut = document.getElementById('git-output');
+            if (gitOut && url.includes('git')) {
+                gitOut.textContent = result.output;
+                gitOut.classList.add('visible');
+            }
+        }
+
+        if (!result.success) {
+            alert(result.message || 'Action failed');
+        }
+    } catch (e) {
+        alert('Request failed: ' + e.message);
+    } finally {
+        spinner.classList.add('spinner-hidden');
+        btn.disabled = false;
+    }
+
+    // Refresh after action
+    setTimeout(fetchStatus, 2000);
+    return false;
+}
+{% endblock %}

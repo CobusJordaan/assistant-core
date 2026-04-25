@@ -4,3 +4,7 @@ httpx
 pydantic
 pydantic-settings
 python-dotenv
+psutil
+jinja2
+itsdangerous
+passlib[bcrypt]

@@ -1,0 +1,52 @@
+{% extends "admin/base.html" %}
+{% block title %}Logs{% endblock %}
+
+{% block content %}
+<div class="tabs">
+    <div class="tab active" onclick="switchTab('assistant-core', this)">assistant-core</div>
+    <div class="tab" onclick="switchTab('ollama', this)">ollama</div>
+    <div class="tab" onclick="switchTab('open-webui', this)">open-webui</div>
+</div>
+
+<div class="logs-controls">
+    <label>Lines:
+        <select id="line-count" onchange="loadLogs()">
+            <option value="100">100</option>
+            <option value="200" selected>200</option>
+            <option value="500">500</option>
+        </select>
+    </label>
+    <button class="btn btn-primary btn-sm" onclick="loadLogs()">Refresh Logs</button>
+</div>
+
+<pre class="log-output" id="log-output">Loading…</pre>
+{% endblock %}
+
+{% block scripts %}
+let currentSource = 'assistant-core';
+
+function switchTab(source, el) {
+    currentSource = source;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    loadLogs();
+}
+
+async function loadLogs() {
+    const lines = document.getElementById('line-count').value;
+    const output = document.getElementById('log-output');
+    output.textContent = 'Loading…';
+
+    try {
+        const r = await fetch(`/admin/api/logs/${currentSource}?lines=${lines}`);
+        if (r.status === 401) { window.location.href = '/admin/login'; return; }
+        const data = await r.json();
+        output.textContent = data.output || '(no output)';
+        output.scrollTop = output.scrollHeight;
+    } catch (e) {
+        output.textContent = 'Failed to load logs: ' + e.message;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadLogs);
+{% endblock %}
