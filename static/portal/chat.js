@@ -349,3 +349,18 @@ function toggleSidebar() {
     document.getElementById('chat-sidebar').classList.toggle('open');
     document.getElementById('sidebar-overlay').classList.toggle('visible');
 }
+
+// Close sidebar on resize to desktop
+window.addEventListener('resize', () => {
+    if (window.innerWidth > 768) {
+        document.getElementById('chat-sidebar').classList.remove('open');
+        document.getElementById('sidebar-overlay').classList.remove('visible');
+    }
+});
+
+// On mobile, scroll to bottom when keyboard opens (input focused)
+if ('visualViewport' in window) {
+    window.visualViewport.addEventListener('resize', () => {
+        scrollToBottom();
+    });
+}
