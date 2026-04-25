@@ -72,6 +72,79 @@ def restart_container(name: str, user: str = "admin") -> dict:
     return result
 
 
+def get_container_detail(name: str) -> dict:
+    """Get detailed Docker container info via docker inspect."""
+    if name not in ALLOWED_CONTAINERS:
+        return {"name": name, "running": False, "error": "not allowed"}
+
+    result = run_command(
+        ["/usr/bin/docker", "inspect", "--format",
+         "{{.State.Status}}|{{.State.StartedAt}}|{{.Config.Image}}|{{.Id}}|{{.State.Running}}|{{.NetworkSettings.Ports}}",
+         name],
+        timeout=5,
+    )
+
+    if not result["success"] or not result["output"].strip():
+        return {
+            "name": name,
+            "running": False,
+            "status": "not found",
+            "started_at": None,
+            "image": None,
+            "container_id": None,
+            "ports": None,
+        }
+
+    parts = result["output"].strip().split("|", 5)
+    status = parts[0] if len(parts) > 0 else "unknown"
+    started_at = parts[1] if len(parts) > 1 else None
+    image = parts[2] if len(parts) > 2 else None
+    container_id = parts[3][:12] if len(parts) > 3 else None
+    running = parts[4].lower() == "true" if len(parts) > 4 else False
+    ports_raw = parts[5] if len(parts) > 5 else ""
+
+    # Parse uptime from started_at
+    uptime = None
+    if started_at and running:
+        try:
+            from datetime import datetime, timezone
+            # Docker returns ISO format like 2026-04-25T10:00:00.123456789Z
+            clean = started_at.split(".")[0] + "+00:00"
+            start_dt = datetime.fromisoformat(clean.replace("Z", "+00:00"))
+            delta = datetime.now(timezone.utc) - start_dt
+            days = delta.days
+            hours, rem = divmod(delta.seconds, 3600)
+            minutes = rem // 60
+            if days > 0:
+                uptime = f"{days}d {hours}h {minutes}m"
+            elif hours > 0:
+                uptime = f"{hours}h {minutes}m"
+            else:
+                uptime = f"{minutes}m"
+        except Exception:
+            uptime = None
+
+    # Try to detect host port
+    host_port = None
+    if ports_raw:
+        # Format: map[3000/tcp:[{0.0.0.0 3000}]] or similar
+        import re
+        port_match = re.search(r"\{[^}]*\s(\d+)\}", ports_raw)
+        if port_match:
+            host_port = port_match.group(1)
+
+    return {
+        "name": name,
+        "running": running,
+        "status": status,
+        "started_at": started_at,
+        "uptime": uptime,
+        "image": image,
+        "container_id": container_id,
+        "host_port": host_port,
+    }
+
+
 def get_all_statuses() -> dict:
     """Get status of all monitored services and containers."""
     return {

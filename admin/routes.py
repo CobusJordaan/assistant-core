@@ -20,7 +20,7 @@ from admin.system_info import (
 )
 from admin.git_manager import get_status as git_status, pull as git_pull
 from admin.service_manager import (
-    get_all_statuses, restart_service, restart_container,
+    get_all_statuses, restart_service, restart_container, get_container_detail,
 )
 
 logger = logging.getLogger("admin.routes")
@@ -177,6 +177,68 @@ async def logs_page(request: Request):
         "active_page": "logs",
         "csrf_token": session.get("csrf", ""),
     })
+
+
+# ---------------------------------------------------------------------------
+# Open WebUI management page
+# ---------------------------------------------------------------------------
+
+OPEN_WEBUI_HOST = os.getenv("OPEN_WEBUI_HOST", "172.18.2.195")
+OPEN_WEBUI_PORT = os.getenv("OPEN_WEBUI_PORT", "3000")
+
+
+@router.get("/open-webui", response_class=HTMLResponse)
+async def open_webui_page(request: Request):
+    session = _require_session(request)
+    if not session:
+        return RedirectResponse("/admin/login", status_code=302)
+
+    detail = get_container_detail("open-webui")
+    # Use detected port if available, fall back to env/default
+    port = detail.get("host_port") or OPEN_WEBUI_PORT
+    webui_url = f"http://{OPEN_WEBUI_HOST}:{port}"
+
+    return templates.TemplateResponse(request, "admin/open-webui.html", {
+        "active_page": "open-webui",
+        "container": detail,
+        "webui_url": webui_url,
+        "csrf_token": session.get("csrf", ""),
+    })
+
+
+@router.get("/api/open-webui/status")
+async def api_open_webui_status(request: Request):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    detail = get_container_detail("open-webui")
+    port = detail.get("host_port") or OPEN_WEBUI_PORT
+    return {**detail, "webui_url": f"http://{OPEN_WEBUI_HOST}:{port}"}
+
+
+@router.get("/api/open-webui/health")
+async def api_open_webui_health(request: Request):
+    """Check Open WebUI HTTP health (best-effort)."""
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    detail = get_container_detail("open-webui")
+    port = detail.get("host_port") or OPEN_WEBUI_PORT
+    url = f"http://{OPEN_WEBUI_HOST}:{port}"
+
+    healthy = False
+    if detail.get("running"):
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(url)
+                healthy = resp.status_code < 500
+        except Exception:
+            healthy = False
+
+    return {"running": detail.get("running", False), "healthy": healthy, "url": url}
 
 
 # ---------------------------------------------------------------------------
