@@ -43,6 +43,13 @@
             <h3>TTS Test</h3>
         </div>
         <div style="display:flex; gap:8px; align-items:flex-end;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">Voice</label>
+                <select class="form-select" id="tts-test-voice" style="min-width:140px;">
+                    <option value="english">English (Piper)</option>
+                    <option value="afrikaans">Afrikaans (Edge)</option>
+                </select>
+            </div>
             <div class="form-group" style="flex:1; margin-bottom:0;">
                 <label class="form-label">Text to speak</label>
                 <input type="text" class="form-input" id="tts-test-text" value="Hello, this is a test of the voice system." placeholder="Enter text...">
@@ -229,7 +236,10 @@ async function testTTS() {
     btn.textContent = 'Generating...';
 
     try {
-        const voice = document.getElementById('tts_voice').value;
+        const testVoiceSel = document.getElementById('tts-test-voice').value;
+        const voice = testVoiceSel === 'afrikaans'
+            ? document.getElementById('tts_afrikaans_voice').value
+            : document.getElementById('tts_voice').value;
 
         const r = await fetch('/admin/api/voice/test-tts', {
             method: 'POST',
