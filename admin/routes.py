@@ -533,13 +533,24 @@ async def api_image_bridge_settings(
         "adetailer_prompt": ("string", adetailer_prompt),
         "adetailer_negative_prompt": ("string", adetailer_negative_prompt),
     }
+    import logging
+    _ib_log = logging.getLogger("admin.routes.ib")
+    saved_count = 0
     for key, (vtype, value) in updates.items():
         # Save even empty strings (to clear a field)
         if value is not None:
             admin_db.set_setting(key, value, vtype, 0, user)
+            saved_count += 1
+
+    # Verify a few key settings were persisted
+    verify = {}
+    for vk in ("default_negative_prompt", "default_width", "default_height", "adetailer_prompt"):
+        s = admin_db.get_setting(vk)
+        verify[vk] = s["value"][:50] if s else "MISSING"
+    _ib_log.info("Saved %d settings. Verify: %s", saved_count, verify)
 
     _audit(request, session, "update_image_bridge_settings", result="SUCCESS")
-    return {"success": True}
+    return {"success": True, "saved": saved_count, "verify": verify}
 
 
 @router.post("/api/image-bridge/generate-key")
