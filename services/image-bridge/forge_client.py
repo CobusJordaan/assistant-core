@@ -105,7 +105,10 @@ class ForgeClient:
 
         # ADetailer extension
         if enable_adetailer:
-            ad_args = {"ad_model": adetailer_model}
+            ad_args = {
+                "ad_model": adetailer_model,
+                "ad_denoising_strength": 0.35,
+            }
             if adetailer_prompt:
                 ad_args["ad_prompt"] = adetailer_prompt
             if adetailer_negative_prompt:
