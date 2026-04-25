@@ -149,6 +149,11 @@ from admin import admin_router
 app.include_router(admin_router)
 app.mount("/static/admin", StaticFiles(directory="static/admin"), name="admin-static")
 
+# Mount family portal
+from portal import portal_router
+app.include_router(portal_router)
+app.mount("/static/portal", StaticFiles(directory="static/portal"), name="portal-static")
+
 
 # ---------------------------------------------------------------------------
 # Request/response models

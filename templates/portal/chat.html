@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Draadloze AI</title>
+    <link rel="stylesheet" href="/static/portal/portal.css">
+</head>
+<body>
+    <button class="sidebar-toggle" onclick="toggleSidebar()">&#9776;</button>
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <div class="chat-layout">
+        <!-- Sidebar -->
+        <div class="chat-sidebar" id="chat-sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-brand">Draadloze AI</div>
+                <button class="btn-new-chat" onclick="newChat()">+ New Chat</button>
+            </div>
+            <div class="conv-list" id="conv-list">
+                {% for c in conversations %}
+                <a href="/portal/c/{{ c.id }}" class="conv-item {{ 'active' if active_conv and active_conv.id == c.id else '' }}">
+                    <span class="conv-title">{{ c.title }}</span>
+                    <button class="conv-delete" onclick="deleteConv(event, {{ c.id }})" title="Delete">&times;</button>
+                </a>
+                {% endfor %}
+            </div>
+            <div class="sidebar-footer">
+                <span class="user-name">{{ session.display_name }}</span>
+                <a href="/portal/logout" class="btn-logout">Log out</a>
+            </div>
+        </div>
+
+        <!-- Main -->
+        <div class="chat-main">
+            <div class="chat-messages" id="chat-messages">
+                {% if messages %}
+                    {% for msg in messages %}
+                    <div class="message message-{{ msg.role }}">
+                        <div class="message-avatar">
+                            {% if msg.role == 'user' %}{{ session.display_name[:2]|upper }}{% else %}AI{% endif %}
+                        </div>
+                        <div class="message-content" id="msg-{{ msg.id }}"></div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="chat-empty" id="chat-empty">
+                        What can I help you with?
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="typing-indicator" id="typing">Draadloze AI is thinking...</div>
+
+            <div class="chat-input-area">
+                <div class="chat-input-wrap">
+                    <textarea class="chat-input" id="chat-input"
+                        placeholder="Message Draadloze AI..."
+                        rows="1"
+                        onkeydown="handleKey(event)"
+                        oninput="autoResize(this)"></textarea>
+                    <button class="btn-send" id="btn-send" onclick="sendMessage()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // Pass existing messages to JS for rendering
+    const existingMessages = {{ messages | tojson }};
+    const activeConvId = {{ active_conv.id if active_conv else 'null' }};
+    const userInitials = {{ session.display_name[:2] | upper | tojson }};
+    </script>
+    <script src="/static/portal/chat.js"></script>
+</body>
+</html>

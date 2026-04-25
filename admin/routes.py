@@ -958,6 +958,173 @@ async def api_ai_router_test(
 
 
 # ---------------------------------------------------------------------------
+# Family Users page
+# ---------------------------------------------------------------------------
+
+_fu_log = logging.getLogger("admin.routes.family-users")
+
+
+@router.get("/family-users", response_class=HTMLResponse)
+async def family_users_page(request: Request):
+    session = _require_session(request)
+    if not session:
+        return RedirectResponse("/admin/login", status_code=302)
+
+    admin_db = _get_admin_db(request)
+    users = admin_db.list_portal_users() if admin_db else []
+
+    return templates.TemplateResponse(request, "admin/family-users.html", {
+        "active_page": "family-users",
+        "users": users,
+        "csrf_token": session.get("csrf", ""),
+    })
+
+
+@router.post("/api/family-users")
+async def api_create_family_user(
+    request: Request,
+    csrf_token: str = Form(...),
+    username: str = Form(...),
+    display_name: str = Form(...),
+    password: str = Form(...),
+    role: str = Form("family"),
+):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    admin_db = _get_admin_db(request)
+    if not admin_db:
+        return JSONResponse(status_code=500, content={"success": False, "message": "DB unavailable"})
+
+    # Check username uniqueness
+    existing = admin_db.get_portal_user(username)
+    if existing:
+        return {"success": False, "message": f"Username '{username}' already exists"}
+
+    pw_hash = _bcrypt.hashpw(password.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
+    user_id = admin_db.create_portal_user(username, display_name, pw_hash, role)
+
+    _fu_log.info("Created family user: %s (id=%d, role=%s)", username, user_id, role)
+    _audit(request, session, "create_family_user", target=username, result="SUCCESS")
+    return {"success": True, "user_id": user_id}
+
+
+@router.post("/api/family-users/{user_id}/password")
+async def api_reset_family_password(
+    request: Request,
+    user_id: int,
+    csrf_token: str = Form(...),
+    password: str = Form(...),
+):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    admin_db = _get_admin_db(request)
+    user = admin_db.get_portal_user_by_id(user_id) if admin_db else None
+    if not user:
+        return {"success": False, "message": "User not found"}
+
+    pw_hash = _bcrypt.hashpw(password.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
+    admin_db.update_portal_user(user_id, password_hash=pw_hash)
+
+    _audit(request, session, "reset_family_password", target=user["username"], result="SUCCESS")
+    return {"success": True}
+
+
+@router.post("/api/family-users/{user_id}/toggle")
+async def api_toggle_family_user(
+    request: Request,
+    user_id: int,
+    csrf_token: str = Form(...),
+):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    admin_db = _get_admin_db(request)
+    user = admin_db.get_portal_user_by_id(user_id) if admin_db else None
+    if not user:
+        return {"success": False, "message": "User not found"}
+
+    new_status = 0 if user["is_active"] else 1
+    admin_db.update_portal_user(user_id, is_active=new_status)
+
+    action = "activate" if new_status else "deactivate"
+    _audit(request, session, f"{action}_family_user", target=user["username"], result="SUCCESS")
+    return {"success": True, "is_active": new_status}
+
+
+@router.post("/api/family-users/{user_id}/permissions")
+async def api_update_family_permissions(
+    request: Request,
+    user_id: int,
+    csrf_token: str = Form(...),
+    chat_allowed: str = Form("1"),
+    image_gen_allowed: str = Form("1"),
+    coding_allowed: str = Form("1"),
+    vision_allowed: str = Form("1"),
+    daily_message_limit: str = Form("0"),
+    daily_image_limit: str = Form("0"),
+):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    admin_db = _get_admin_db(request)
+    if not admin_db:
+        return {"success": False, "message": "DB unavailable"}
+
+    admin_db.update_portal_user(user_id,
+        chat_allowed=int(chat_allowed),
+        image_gen_allowed=int(image_gen_allowed),
+        coding_allowed=int(coding_allowed),
+        vision_allowed=int(vision_allowed),
+        daily_message_limit=int(daily_message_limit),
+        daily_image_limit=int(daily_image_limit),
+    )
+
+    _audit(request, session, "update_family_permissions", target=str(user_id), result="SUCCESS")
+    return {"success": True}
+
+
+@router.delete("/api/family-users/{user_id}")
+async def api_delete_family_user(
+    request: Request,
+    user_id: int,
+):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    admin_db = _get_admin_db(request)
+    user = admin_db.get_portal_user_by_id(user_id) if admin_db else None
+    if not user:
+        return {"success": False, "message": "User not found"}
+
+    admin_db.delete_portal_user(user_id)
+    _audit(request, session, "delete_family_user", target=user["username"], result="SUCCESS")
+    return {"success": True}
+
+
+# ---------------------------------------------------------------------------
 # Users page
 # ---------------------------------------------------------------------------
 
