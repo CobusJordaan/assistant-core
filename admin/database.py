@@ -451,6 +451,13 @@ class AdminDB:
 
         return self._conn.execute(sql, params).fetchone()[0]
 
+    def get_distinct_actions(self) -> list[str]:
+        """Return all distinct action values from audit_log, sorted."""
+        rows = self._conn.execute(
+            "SELECT DISTINCT action FROM audit_log ORDER BY action"
+        ).fetchall()
+        return [r[0] for r in rows]
+
     # ------------------------------------------------------------------
     # Login attempts
     # ------------------------------------------------------------------

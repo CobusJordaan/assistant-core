@@ -925,6 +925,19 @@ async def api_audit_log(
     return {"entries": entries, "total": total, "page": page, "pages": pages}
 
 
+@router.get("/api/audit/actions")
+async def api_audit_actions(request: Request):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    admin_db = _get_admin_db(request)
+    if not admin_db or not admin_db.available:
+        return {"actions": []}
+
+    return {"actions": admin_db.get_distinct_actions()}
+
+
 # ---------------------------------------------------------------------------
 # Actions (POST, CSRF-protected, background threads)
 # ---------------------------------------------------------------------------

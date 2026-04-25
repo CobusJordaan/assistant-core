@@ -13,19 +13,6 @@
         <label class="form-label">Filter by Action</label>
         <select class="form-select" id="filter-action">
             <option value="">All actions</option>
-            <option value="login">Login</option>
-            <option value="create_user">Create User</option>
-            <option value="delete_user">Delete User</option>
-            <option value="reset_password">Reset Password</option>
-            <option value="change_role">Change Role</option>
-            <option value="create_api_key">Create API Key</option>
-            <option value="revoke_api_key">Revoke API Key</option>
-            <option value="update_setting">Update Setting</option>
-            <option value="delete_setting">Delete Setting</option>
-            <option value="restart_service">Restart Service</option>
-            <option value="restart_container">Restart Container</option>
-            <option value="git_pull">Git Pull</option>
-            <option value="db_backup">DB Backup</option>
         </select>
     </div>
     <button class="btn btn-primary btn-sm" onclick="loadAudit(1)">
@@ -131,5 +118,27 @@ function esc(s) {
     return d.innerHTML;
 }
 
-document.addEventListener('DOMContentLoaded', () => loadAudit(1));
+function formatAction(action) {
+    return action.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+async function loadActions() {
+    try {
+        const r = await fetch('/admin/api/audit/actions');
+        if (r.status === 401) return;
+        const data = await r.json();
+        const select = document.getElementById('filter-action');
+        for (const action of (data.actions || [])) {
+            const opt = document.createElement('option');
+            opt.value = action;
+            opt.textContent = formatAction(action);
+            select.appendChild(opt);
+        }
+    } catch (e) { /* ignore */ }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadActions();
+    loadAudit(1);
+});
 {% endblock %}
