@@ -8,8 +8,10 @@ import os
 import time
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from config import load_config, ImageBridgeConfig
@@ -83,7 +85,7 @@ class ImageGenerationRequest(BaseModel):
     n: int = Field(default=1, ge=1, le=4)
     size: str = Field(default="512x512")
     model: str = Field(default="")
-    response_format: str = Field(default="b64_json")
+    response_format: str = Field(default="url")
     negative_prompt: str = Field(default="")
 
 
@@ -127,6 +129,7 @@ async def list_models(
 
 @app.post("/v1/images/generations")
 async def generate_image(
+    request: Request,
     req: ImageGenerationRequest,
     authorization: str | None = Header(None),
     x_admin_test: str | None = Header(None, alias="X-Admin-Test"),
@@ -171,10 +174,43 @@ async def generate_image(
         logger.error("Image generation failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
+    # Build response based on response_format
+    use_url = req.response_format != "b64_json"
+    # Derive base URL from the incoming request so it works from any client
+    base_url = str(request.base_url).rstrip("/")
+    output = []
+    for item in results:
+        if use_url and item.get("filename"):
+            output.append({
+                "url": f"{base_url}/images/{item['filename']}",
+                "revised_prompt": item["revised_prompt"],
+            })
+        else:
+            output.append({
+                "b64_json": item["b64_json"],
+                "revised_prompt": item["revised_prompt"],
+            })
+
     return {
         "created": int(time.time()),
-        "data": results,
+        "data": output,
     }
+
+
+@app.get("/images/{filename}")
+async def serve_image(filename: str):
+    """Serve a generated image file."""
+    if not _config:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    # Sanitize filename to prevent path traversal
+    safe = Path(filename).name
+    filepath = Path(_config.output_dir) / safe
+
+    if not filepath.is_file():
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    return FileResponse(filepath, media_type="image/png")
 
 
 # ---------------------------------------------------------------------------

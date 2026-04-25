@@ -715,7 +715,7 @@ async def api_image_bridge_test_generate(
                 h = hs["value"]
 
     bridge_url = f"http://127.0.0.1:{port}"
-    body = {"prompt": prompt, "n": 1, "size": f"{w}x{h}"}
+    body = {"prompt": prompt, "n": 1, "size": f"{w}x{h}", "response_format": "b64_json"}
     if negative_prompt:
         body["negative_prompt"] = negative_prompt
 

@@ -131,8 +131,10 @@ class ForgeClient:
 
         for i, b64 in enumerate(images[:n]):
             saved_path = self._save_image(b64, prompt, i)
+            filename = Path(saved_path).name if saved_path else None
             results.append({
                 "b64_json": b64,
+                "filename": filename,
                 "revised_prompt": prompt,
             })
 
