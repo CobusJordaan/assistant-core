@@ -26,6 +26,10 @@ templates = Jinja2Templates(directory="templates")
 
 AI_ROUTER_URL = "http://127.0.0.1:5100"
 SYSTEM_PROMPT = "You are Draadloze AI, a helpful assistant for a family environment."
+DEFAULT_VISION_PROMPT = "Please summarize this image clearly. If it contains text, extract and explain the important parts."
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_IMAGES_PER_MSG = 4
+ALLOWED_IMAGE_MIMES = {"image/jpeg", "image/png", "image/webp"}
 
 
 def _get_db(request: Request):
@@ -99,12 +103,14 @@ async def chat_page(request: Request):
 
     db = _get_db(request)
     conversations = db.list_conversations(session["user_id"]) if db else []
+    user = db.get_portal_user_by_id(session["user_id"]) if db else None
 
     response = templates.TemplateResponse(request, "portal/chat.html", {
         "session": session,
         "conversations": conversations,
         "active_conv": None,
         "messages": [],
+        "vision_allowed": user.get("vision_allowed", 1) if user else 1,
     })
     refresh_portal_session(request, response)
     return response
@@ -123,12 +129,14 @@ async def chat_conversation(request: Request, conv_id: int):
 
     conversations = db.list_conversations(session["user_id"])
     messages = db.get_messages(conv_id)
+    user = db.get_portal_user_by_id(session["user_id"]) if db else None
 
     response = templates.TemplateResponse(request, "portal/chat.html", {
         "session": session,
         "conversations": conversations,
         "active_conv": conv,
         "messages": messages,
+        "vision_allowed": user.get("vision_allowed", 1) if user else 1,
     })
     refresh_portal_session(request, response)
     return response
@@ -152,7 +160,9 @@ async def api_chat(request: Request):
     body = await request.json()
     message = body.get("message", "").strip()
     conv_id = body.get("conversation_id")
-    if not message:
+    images = body.get("images", [])  # list of data URI strings
+
+    if not message and not images:
         return JSONResponse(status_code=400, content={"error": "Empty message"})
 
     user_id = session["user_id"]
@@ -162,6 +172,41 @@ async def api_chat(request: Request):
     user = db.get_portal_user_by_id(user_id)
     if not user or not user["is_active"]:
         return JSONResponse(status_code=403, content={"error": "Account disabled"})
+
+    # Validate images if present
+    if images:
+        if not user.get("vision_allowed", 1):
+            return JSONResponse(status_code=403, content={"error": "Image uploads are not enabled for your account."})
+
+        if len(images) > MAX_IMAGES_PER_MSG:
+            return JSONResponse(status_code=400, content={"error": f"Maximum {MAX_IMAGES_PER_MSG} images per message."})
+
+        mime_types = []
+        for i, data_uri in enumerate(images):
+            # Validate data URI format: data:image/jpeg;base64,...
+            if not data_uri.startswith("data:"):
+                return JSONResponse(status_code=400, content={"error": "Invalid image format."})
+            header = data_uri.split(",", 1)[0]  # e.g. "data:image/jpeg;base64"
+            mime = header.split(":")[1].split(";")[0] if ":" in header else ""
+            if mime not in ALLOWED_IMAGE_MIMES:
+                return JSONResponse(status_code=400, content={
+                    "error": "Invalid file type. Only JPG, PNG, and WebP images are allowed."
+                })
+            # Check size (base64 is ~4/3 of original)
+            b64_data = data_uri.split(",", 1)[1] if "," in data_uri else ""
+            approx_size = len(b64_data) * 3 // 4
+            if approx_size > MAX_IMAGE_SIZE:
+                return JSONResponse(status_code=400, content={
+                    "error": "Image too large. Maximum size is 10MB."
+                })
+            mime_types.append(mime)
+
+        logger.info("Vision upload: user=%s, images=%d, mimes=%s",
+                     session["user"], len(images), mime_types)
+
+    # Default prompt if images but no text
+    if images and not message:
+        message = DEFAULT_VISION_PROMPT
 
     # Check daily limits
     usage = db.get_daily_usage(user_id, today)
@@ -178,7 +223,7 @@ async def api_chat(request: Request):
     if not conv or conv["user_id"] != user_id:
         return JSONResponse(status_code=403, content={"error": "Access denied"})
 
-    # Save user message
+    # Save user message (text only, no base64)
     db.add_message(conv_id, "user", message)
     db.increment_usage(user_id, today, messages=1)
 
@@ -187,6 +232,18 @@ async def api_chat(request: Request):
     ai_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for msg in history:
         ai_messages.append({"role": msg["role"], "content": msg["content"]})
+
+    # If images present, replace the last user message with multimodal format
+    if images:
+        content_parts = [{"type": "text", "text": message}]
+        for data_uri in images:
+            content_parts.append({
+                "type": "image_url",
+                "image_url": {"url": data_uri},
+            })
+        # Replace last message (which is the current user message text)
+        ai_messages[-1] = {"role": "user", "content": content_parts}
+        logger.info("Built multimodal message with %d image(s), intent=vision", len(images))
 
     # Stream response from AI Router
     return StreamingResponse(

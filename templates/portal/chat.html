@@ -53,7 +53,12 @@
             <div class="typing-indicator" id="typing">Draadloze AI is thinking...</div>
 
             <div class="chat-input-area">
+                <div class="image-preview" id="image-preview"></div>
                 <div class="chat-input-wrap">
+                    <input type="file" id="image-input" accept="image/jpeg,image/png,image/webp" multiple style="display:none" onchange="handleImageUpload(this)">
+                    <button class="btn-upload" id="btn-upload" onclick="document.getElementById('image-input').click()" title="Upload image">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                    </button>
                     <textarea class="chat-input" id="chat-input"
                         placeholder="Message Draadloze AI..."
                         rows="1"
@@ -72,6 +77,7 @@
     const existingMessages = {{ messages | tojson }};
     const activeConvId = {{ active_conv.id if active_conv else 'null' }};
     const userInitials = {{ session.display_name[:2] | upper | tojson }};
+    const visionAllowed = {{ vision_allowed | tojson }};
     </script>
     <script src="/static/portal/chat.js"></script>
 </body>

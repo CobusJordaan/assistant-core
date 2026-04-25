@@ -2,6 +2,7 @@
 
 let currentConvId = activeConvId;
 let isStreaming = false;
+let pendingImages = []; // {dataUrl, name}
 
 // ---------------------------------------------------------------------------
 // Init
@@ -21,24 +22,102 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Image upload
+// ---------------------------------------------------------------------------
+function handleImageUpload(input) {
+    const files = Array.from(input.files);
+    input.value = ''; // reset so same file can be re-selected
+
+    if (!visionAllowed) {
+        showChatAlert('Image uploads are not enabled for your account.');
+        return;
+    }
+
+    for (const file of files) {
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+            showChatAlert('Only JPG, PNG, and WebP images are allowed.');
+            continue;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            showChatAlert('Image too large (max 10MB): ' + file.name);
+            continue;
+        }
+        if (pendingImages.length >= 4) {
+            showChatAlert('Maximum 4 images per message.');
+            break;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            pendingImages.push({ dataUrl: e.target.result, name: file.name });
+            renderImagePreview();
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function removeImage(index) {
+    pendingImages.splice(index, 1);
+    renderImagePreview();
+}
+
+function renderImagePreview() {
+    const container = document.getElementById('image-preview');
+    container.innerHTML = '';
+    pendingImages.forEach((img, i) => {
+        const item = document.createElement('div');
+        item.className = 'preview-item';
+
+        const thumb = document.createElement('img');
+        thumb.src = img.dataUrl;
+        thumb.alt = img.name;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'preview-remove';
+        removeBtn.textContent = '\u00d7';
+        removeBtn.onclick = () => removeImage(i);
+
+        item.appendChild(thumb);
+        item.appendChild(removeBtn);
+        container.appendChild(item);
+    });
+}
+
+function showChatAlert(msg) {
+    const container = document.getElementById('chat-messages');
+    const alert = document.createElement('div');
+    alert.className = 'chat-error';
+    alert.style.maxWidth = '800px';
+    alert.style.margin = '0 auto 12px';
+    alert.textContent = msg;
+    container.appendChild(alert);
+    scrollToBottom();
+    setTimeout(() => alert.remove(), 5000);
+}
+
+// ---------------------------------------------------------------------------
 // Send message
 // ---------------------------------------------------------------------------
 async function sendMessage() {
     const input = document.getElementById('chat-input');
     const message = input.value.trim();
-    if (!message || isStreaming) return;
+    const images = pendingImages.slice(); // copy
+
+    if ((!message && images.length === 0) || isStreaming) return;
 
     isStreaming = true;
     input.value = '';
     autoResize(input);
+    pendingImages = [];
+    renderImagePreview();
     document.getElementById('btn-send').disabled = true;
 
     // Remove empty state
     const empty = document.getElementById('chat-empty');
     if (empty) empty.remove();
 
-    // Add user message to UI
-    appendMessage('user', message);
+    // Add user message to UI (with image thumbnails if any)
+    appendMessage('user', message, images);
 
     // Show typing indicator
     const typing = document.getElementById('typing');
@@ -51,13 +130,18 @@ async function sendMessage() {
     let fullText = '';
 
     try {
+        const payload = {
+            message: message,
+            conversation_id: currentConvId,
+        };
+        if (images.length > 0) {
+            payload.images = images.map(img => img.dataUrl);
+        }
+
         const resp = await fetch('/portal/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                message: message,
-                conversation_id: currentConvId,
-            }),
+            body: JSON.stringify(payload),
         });
 
         if (!resp.ok) {
@@ -121,7 +205,7 @@ async function sendMessage() {
 // ---------------------------------------------------------------------------
 // UI helpers
 // ---------------------------------------------------------------------------
-function appendMessage(role, content) {
+function appendMessage(role, content, images) {
     const container = document.getElementById('chat-messages');
     const div = document.createElement('div');
     div.className = 'message message-' + role;
@@ -132,8 +216,25 @@ function appendMessage(role, content) {
 
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
+
+    // Show uploaded image thumbnails for user messages
+    if (images && images.length > 0) {
+        const imgWrap = document.createElement('div');
+        imgWrap.className = 'message-images';
+        images.forEach(img => {
+            const thumb = document.createElement('img');
+            thumb.src = img.dataUrl;
+            thumb.alt = img.name || 'uploaded image';
+            thumb.onclick = () => window.open(img.dataUrl);
+            imgWrap.appendChild(thumb);
+        });
+        contentDiv.appendChild(imgWrap);
+    }
+
     if (content) {
-        contentDiv.innerHTML = renderMarkdown(content);
+        const textDiv = document.createElement('div');
+        textDiv.innerHTML = renderMarkdown(content);
+        contentDiv.appendChild(textDiv);
     }
 
     div.appendChild(avatar);
