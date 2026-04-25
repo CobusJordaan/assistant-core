@@ -699,7 +699,7 @@ class AdminDB:
     def create_portal_user(self, username: str, display_name: str,
                            password_hash: str, role: str = "family") -> int:
         now = _now()
-        return self._execute_write(
+        return self._execute_write_returning(
             """INSERT INTO portal_users (username, display_name, password_hash, role,
                created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)""",
             (username, display_name, password_hash, role, now, now),
@@ -752,7 +752,7 @@ class AdminDB:
 
     def create_conversation(self, user_id: int, title: str = "New Chat") -> int:
         now = _now()
-        return self._execute_write(
+        return self._execute_write_returning(
             "INSERT INTO portal_conversations (user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
             (user_id, title, now, now),
         )
@@ -791,7 +791,7 @@ class AdminDB:
     def add_message(self, conversation_id: int, role: str, content: str,
                     intent: str = "", model_used: str = "", image_url: str = "") -> int:
         now = _now()
-        msg_id = self._execute_write(
+        msg_id = self._execute_write_returning(
             """INSERT INTO portal_messages (conversation_id, role, content, intent,
                model_used, image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (conversation_id, role, content, intent, model_used, image_url, now),
