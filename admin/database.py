@@ -43,6 +43,7 @@ class AdminDB:
             self._create_tables()
             self._bootstrap_owner()
             self._seed_default_settings()
+            self._seed_missing_settings()
             self._available = True
             logger.info("AdminDB initialized at %s", self._db_path)
         except Exception as e:
@@ -200,6 +201,30 @@ class AdminDB:
             """INSERT OR IGNORE INTO app_settings (key, value, value_type, is_secret, updated_at, updated_by)
                VALUES (?, ?, ?, ?, ?, 'system')""",
             [(k, v, vt, s, now) for k, v, vt, s in defaults],
+        )
+
+    def _seed_missing_settings(self):
+        """Insert any new default settings that don't already exist."""
+        now = _now()
+        extras = [
+            ("image_bridge_enabled", "false", "bool", 0),
+            ("image_bridge_host", "0.0.0.0", "string", 0),
+            ("image_bridge_port", "5000", "string", 0),
+            ("forge_base_url", "http://127.0.0.1:7860", "string", 0),
+            ("forge_txt2img_endpoint", "/sdapi/v1/txt2img", "string", 0),
+            ("forge_img2img_endpoint", "/sdapi/v1/img2img", "string", 0),
+            ("default_width", "512", "int", 0),
+            ("default_height", "512", "int", 0),
+            ("default_steps", "20", "int", 0),
+            ("default_cfg_scale", "7", "int", 0),
+            ("default_sampler", "Euler a", "string", 0),
+            ("default_model", "", "string", 0),
+            ("output_dir", "/opt/ai-assistant/data/image-bridge/output", "string", 0),
+        ]
+        self._executemany_write(
+            """INSERT OR IGNORE INTO app_settings (key, value, value_type, is_secret, updated_at, updated_by)
+               VALUES (?, ?, ?, ?, ?, 'system')""",
+            [(k, v, vt, s, now) for k, v, vt, s in extras],
         )
 
     # ------------------------------------------------------------------

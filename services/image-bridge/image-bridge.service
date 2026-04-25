@@ -1,0 +1,15 @@
+[Unit]
+Description=Image Bridge - OpenAI-compatible image generation API
+After=network.target
+
+[Service]
+Type=simple
+User=aicrm
+WorkingDirectory=/opt/ai-assistant/services/image-bridge
+ExecStart=/opt/ai-assistant/services/image-bridge/venv/bin/uvicorn app:app --host 0.0.0.0 --port 5000
+Restart=always
+RestartSec=5
+EnvironmentFile=/etc/image-bridge.env
+
+[Install]
+WantedBy=multi-user.target

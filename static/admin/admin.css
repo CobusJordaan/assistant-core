@@ -1215,3 +1215,32 @@ a { color: var(--blue); text-decoration: none; }
 @media (max-width: 900px) {
     .thermal-cores-grid { grid-template-columns: 1fr; }
 }
+
+/* ---- Image Bridge ---- */
+.connection-url {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.82rem;
+    cursor: pointer;
+    padding: 2px 6px;
+    background: rgba(59,130,246,0.08);
+    border-radius: 4px;
+    color: var(--blue);
+    transition: background 0.2s;
+}
+.connection-url:hover { background: rgba(59,130,246,0.16); }
+
+.test-image-result {
+    padding: 14px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    text-align: center;
+}
+
+.setup-instructions code {
+    font-size: 0.78rem;
+    padding: 1px 5px;
+    background: rgba(59,130,246,0.08);
+    border-radius: 3px;
+    color: var(--blue);
+}

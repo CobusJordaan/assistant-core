@@ -409,6 +409,237 @@ async def api_open_webui_delete_backup(request: Request, filename: str):
 
 
 # ---------------------------------------------------------------------------
+# Image Bridge management page
+# ---------------------------------------------------------------------------
+
+@router.get("/image-bridge", response_class=HTMLResponse)
+async def image_bridge_page(request: Request):
+    session = _require_session(request)
+    if not session:
+        return RedirectResponse("/admin/login", status_code=302)
+
+    from admin.service_manager import get_service_status
+    svc_status = get_service_status("image-bridge")
+
+    admin_db = _get_admin_db(request)
+    settings = {}
+    key_prefix = None
+    if admin_db and admin_db.available:
+        for key in ("forge_base_url", "image_bridge_port", "default_width",
+                     "default_height", "default_steps", "default_cfg_scale",
+                     "default_sampler", "default_model", "output_dir"):
+            s = admin_db.get_setting(key)
+            if s:
+                settings[key] = s["value"]
+        pfx = admin_db.get_setting("image_bridge_api_key_prefix")
+        if pfx and pfx["value"]:
+            key_prefix = pfx["value"]
+
+    return templates.TemplateResponse(request, "admin/image-bridge.html", {
+        "active_page": "image-bridge",
+        "service": svc_status,
+        "settings": settings,
+        "key_prefix": key_prefix,
+        "bridge_port": settings.get("image_bridge_port", "5000"),
+        "session_role": session.get("role", "admin"),
+        "csrf_token": session.get("csrf", ""),
+    })
+
+
+@router.get("/api/image-bridge/status")
+async def api_image_bridge_status(request: Request):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    from admin.service_manager import get_service_status
+    svc = get_service_status("image-bridge")
+
+    admin_db = _get_admin_db(request)
+    port = "5000"
+    forge_url = "http://127.0.0.1:7860"
+    key_configured = False
+    if admin_db and admin_db.available:
+        p = admin_db.get_setting("image_bridge_port")
+        if p:
+            port = p["value"]
+        f = admin_db.get_setting("forge_base_url")
+        if f:
+            forge_url = f["value"]
+        k = admin_db.get_setting("image_bridge_api_key_prefix")
+        if k and k["value"]:
+            key_configured = True
+
+    return {
+        "service": svc,
+        "port": port,
+        "forge_url": forge_url,
+        "key_configured": key_configured,
+    }
+
+
+@router.post("/api/image-bridge/settings")
+async def api_image_bridge_settings(
+    request: Request,
+    csrf_token: str = Form(...),
+    forge_base_url: str = Form(""),
+    default_width: str = Form(""),
+    default_height: str = Form(""),
+    default_steps: str = Form(""),
+    default_cfg_scale: str = Form(""),
+    default_sampler: str = Form(""),
+    default_model: str = Form(""),
+    output_dir: str = Form(""),
+):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    admin_db = _get_admin_db(request)
+    if not admin_db or not admin_db.available:
+        return JSONResponse(status_code=500, content={"success": False, "message": "Database not available"})
+
+    user = session.get("user", "admin")
+    updates = {
+        "forge_base_url": ("string", forge_base_url),
+        "default_width": ("int", default_width),
+        "default_height": ("int", default_height),
+        "default_steps": ("int", default_steps),
+        "default_cfg_scale": ("int", default_cfg_scale),
+        "default_sampler": ("string", default_sampler),
+        "default_model": ("string", default_model),
+        "output_dir": ("string", output_dir),
+    }
+    for key, (vtype, value) in updates.items():
+        if value:
+            admin_db.set_setting(key, value, vtype, 0, user)
+
+    _audit(request, session, "update_image_bridge_settings", result="SUCCESS")
+    return {"success": True}
+
+
+@router.post("/api/image-bridge/generate-key")
+async def api_image_bridge_generate_key(
+    request: Request,
+    csrf_token: str = Form(...),
+):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    if not _require_owner(session) and session.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"success": False, "message": "Admin role required"})
+
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    admin_db = _get_admin_db(request)
+    if not admin_db or not admin_db.available:
+        return JSONResponse(status_code=500, content={"success": False, "message": "Database not available"})
+
+    import hashlib
+    import secrets
+
+    raw_key = "imgbr_" + secrets.token_hex(32)
+    salt = secrets.token_hex(16)
+    key_hash = hashlib.sha256((salt + raw_key).encode()).hexdigest()
+    prefix = raw_key[:8]
+    user = session.get("user", "admin")
+
+    admin_db.set_setting("image_bridge_api_key_hash", key_hash, "string", 1, user)
+    admin_db.set_setting("image_bridge_api_key_salt", salt, "string", 1, user)
+    admin_db.set_setting("image_bridge_api_key_prefix", prefix, "string", 0, user)
+
+    _audit(request, session, "generate_image_bridge_key", result="SUCCESS")
+
+    return {"success": True, "raw_key": raw_key, "prefix": prefix}
+
+
+@router.post("/api/image-bridge/test-forge")
+async def api_image_bridge_test_forge(
+    request: Request,
+    csrf_token: str = Form(...),
+):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    admin_db = _get_admin_db(request)
+    forge_url = "http://127.0.0.1:7860"
+    if admin_db and admin_db.available:
+        s = admin_db.get_setting("forge_base_url")
+        if s:
+            forge_url = s["value"]
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(forge_url)
+            connected = resp.status_code < 500
+    except Exception as e:
+        connected = False
+
+    _audit(request, session, "test_forge_connection",
+           target=forge_url, result="OK" if connected else "FAILED")
+
+    return {"success": connected, "forge_url": forge_url}
+
+
+@router.post("/api/image-bridge/test-generate")
+async def api_image_bridge_test_generate(
+    request: Request,
+    prompt: str = Form(...),
+    csrf_token: str = Form(...),
+):
+    """Test image generation by calling the image-bridge service."""
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    admin_db = _get_admin_db(request)
+    port = "5000"
+    api_key = None
+    if admin_db and admin_db.available:
+        p = admin_db.get_setting("image_bridge_port")
+        if p:
+            port = p["value"]
+        # Read raw hash+salt to reconstruct — but we can't get the raw key back.
+        # Instead, use internal localhost call without auth for admin test.
+
+    bridge_url = f"http://127.0.0.1:{port}"
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                f"{bridge_url}/v1/images/generations",
+                json={"prompt": prompt, "n": 1, "size": "512x512"},
+                headers={"X-Admin-Test": "true"},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                _audit(request, session, "test_image_generate", target=prompt[:50], result="SUCCESS")
+                return {"success": True, "data": data}
+            else:
+                return {"success": False, "message": f"Bridge returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as e:
+        return {"success": False, "message": f"Connection failed: {str(e)}"}
+
+
+# ---------------------------------------------------------------------------
 # Users page
 # ---------------------------------------------------------------------------
 
@@ -685,6 +916,7 @@ _LOG_COMMANDS = {
     "assistant-core": ["/usr/bin/journalctl", "-u", "assistant-core", "--no-pager", "-n"],
     "ollama": ["/usr/bin/journalctl", "-u", "ollama", "--no-pager", "-n"],
     "open-webui": ["/usr/bin/docker", "logs", "--tail"],
+    "image-bridge": ["/usr/bin/journalctl", "-u", "image-bridge", "--no-pager", "-n"],
 }
 
 
