@@ -44,7 +44,7 @@
         <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
             <div class="stat">
                 <label>Open WebUI Connection URL</label>
-                <span class="val connection-url" onclick="copyUrl(this)" title="Click to copy">http://{{ settings.get('ai_router_ollama_url', '172.18.2.195').split('//')[1].split(':')[0] if '://' in settings.get('ai_router_ollama_url', '172.18.2.195') else '172.18.2.195' }}:{{ router_port }}/v1</span>
+                <span class="val connection-url" onclick="copyUrl(this)" title="Click to copy">http://172.18.2.195:{{ router_port }}/v1</span>
             </div>
             <div style="font-size:0.75rem; color:var(--muted); margin-top:4px;">Type: OpenAI &nbsp;|&nbsp; Auth: Bearer API_KEY &nbsp;|&nbsp; Model: draadloze-ai</div>
         </div>
@@ -306,7 +306,12 @@ async function generateArKey() {
         if (data.success) {
             const keyDiv = document.getElementById('ar-new-key');
             keyDiv.style.display = 'block';
-            keyDiv.innerHTML = '<strong>New API Key (copy now, shown once):</strong><br>' + data.raw_key;
+            keyDiv.textContent = '';
+            const b = document.createElement('strong');
+            b.textContent = 'New API Key (copy now, shown once):';
+            keyDiv.appendChild(b);
+            keyDiv.appendChild(document.createElement('br'));
+            keyDiv.appendChild(document.createTextNode(data.raw_key));
             document.getElementById('ar-key-display').textContent = data.prefix + '...';
             document.getElementById('ar-key-display').style.color = 'var(--green)';
         } else {
