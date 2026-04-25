@@ -24,8 +24,14 @@
         {% endif %}
 
         <form method="POST" action="/admin/login">
-            <input type="text" name="username" placeholder="Username" autocomplete="username" required>
-            <input type="password" name="password" placeholder="Password" autocomplete="current-password" required>
+            <div class="input-group">
+                <label class="input-label" for="username">Username</label>
+                <input type="text" id="username" name="username" autocomplete="username" required>
+            </div>
+            <div class="input-group">
+                <label class="input-label" for="password">Password</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+            </div>
             <button type="submit" {% if lockout_remaining %}disabled{% endif %}>Sign In</button>
         </form>
     </div>

@@ -8,20 +8,43 @@
 </head>
 <body>
     <nav class="admin-nav">
-        <span class="nav-brand">assistant-core admin</span>
+        <div class="nav-brand">
+            <span class="nav-brand-sub">assistant-core</span>
+            <span class="nav-brand-main">Admin Dashboard</span>
+        </div>
         <div class="nav-links">
             <a href="/admin" class="{% if active_page == 'dashboard' %}active{% endif %}">Dashboard</a>
             <a href="/admin/logs" class="{% if active_page == 'logs' %}active{% endif %}">Logs</a>
-            <a href="/admin/logout">Logout</a>
+            <a href="/admin/logout" class="nav-logout">Logout</a>
         </div>
     </nav>
 
     <div class="summary-bar" id="summary-bar">
-        <div class="summary-item">CPU <span class="val" id="sum-cpu">—</span></div>
-        <div class="summary-item">RAM <span class="val" id="sum-ram">—</span></div>
-        <div class="summary-item">GPU <span class="val" id="sum-gpu">—</span></div>
-        <div class="summary-item">Disk <span class="val" id="sum-disk">—</span></div>
-        <div class="summary-item">Services <span class="val" id="sum-svc">—</span></div>
+        <div class="summary-pill" id="pill-cpu">
+            <span class="pill-dot"></span>
+            <span class="pill-label">CPU</span>
+            <span class="pill-value" id="sum-cpu">—</span>
+        </div>
+        <div class="summary-pill" id="pill-ram">
+            <span class="pill-dot"></span>
+            <span class="pill-label">RAM</span>
+            <span class="pill-value" id="sum-ram">—</span>
+        </div>
+        <div class="summary-pill" id="pill-gpu">
+            <span class="pill-dot"></span>
+            <span class="pill-label">GPU</span>
+            <span class="pill-value" id="sum-gpu">—</span>
+        </div>
+        <div class="summary-pill" id="pill-disk">
+            <span class="pill-dot"></span>
+            <span class="pill-label">Disk</span>
+            <span class="pill-value" id="sum-disk">—</span>
+        </div>
+        <div class="summary-pill" id="pill-svc">
+            <span class="pill-dot"></span>
+            <span class="pill-label">Services</span>
+            <span class="pill-value" id="sum-svc">—</span>
+        </div>
     </div>
 
     <main class="admin-main">
@@ -30,7 +53,7 @@
                 <span class="live-dot" id="live-dot"></span>
                 <span id="last-updated-text">Loading…</span>
             </div>
-            <button class="btn btn-primary btn-sm" onclick="refreshNow()">Refresh Now</button>
+            <button class="btn btn-ghost btn-sm" onclick="refreshNow()">Refresh Now</button>
         </div>
 
         {% block content %}{% endblock %}
@@ -38,6 +61,13 @@
 
     <script>
         let autoRefreshInterval = null;
+
+        function setPillStatus(pillId, level) {
+            const pill = document.getElementById(pillId);
+            if (!pill) return;
+            pill.classList.remove('pill-healthy', 'pill-warning', 'pill-critical');
+            pill.classList.add('pill-' + level);
+        }
 
         async function fetchStatus() {
             try {
@@ -53,23 +83,39 @@
         }
 
         function updateSummaryBar(data) {
-            if (data.cpu) document.getElementById('sum-cpu').textContent = data.cpu.percent + '%';
-            if (data.memory) document.getElementById('sum-ram').textContent = data.memory.percent + '%';
+            if (data.cpu) {
+                const cpuPct = data.cpu.percent;
+                document.getElementById('sum-cpu').textContent = cpuPct + '%';
+                setPillStatus('pill-cpu', cpuPct > 90 ? 'critical' : cpuPct > 70 ? 'warning' : 'healthy');
+            }
+            if (data.memory) {
+                const ramPct = data.memory.percent;
+                document.getElementById('sum-ram').textContent = data.memory.used_gb + ' / ' + data.memory.total_gb + ' GB';
+                setPillStatus('pill-ram', ramPct > 90 ? 'critical' : ramPct > 75 ? 'warning' : 'healthy');
+            }
             if (data.gpu) {
-                document.getElementById('sum-gpu').textContent = data.gpu.utilization + '% ' + data.gpu.temperature + '°C';
+                const temp = data.gpu.temperature;
+                const util = data.gpu.utilization;
+                const tempStr = temp !== null && temp !== undefined ? temp + '°C' : '';
+                const utilStr = util !== null && util !== undefined ? util + '%' : '';
+                document.getElementById('sum-gpu').textContent = [tempStr, utilStr ? '(' + utilStr + ')' : ''].filter(Boolean).join(' ') || 'N/A';
+                setPillStatus('pill-gpu', (temp > 85 || util > 90) ? 'critical' : (temp > 70 || util > 75) ? 'warning' : 'healthy');
             } else {
                 document.getElementById('sum-gpu').textContent = 'N/A';
+                setPillStatus('pill-gpu', 'healthy');
             }
             if (data.disks && data.disks.length > 0) {
                 const root = data.disks.find(d => d.mount === '/') || data.disks[0];
                 document.getElementById('sum-disk').textContent = root.percent + '%';
+                setPillStatus('pill-disk', root.percent > 95 ? 'critical' : root.percent > 85 ? 'warning' : 'healthy');
             }
             if (data.services) {
                 const svcs = Object.values(data.services.services || {});
                 const ctrs = Object.values(data.services.containers || {});
                 const total = svcs.length + ctrs.length;
                 const up = svcs.filter(s => s.active).length + ctrs.filter(c => c.running).length;
-                document.getElementById('sum-svc').textContent = up + '/' + total;
+                document.getElementById('sum-svc').textContent = up + '/' + total + ' Healthy';
+                setPillStatus('pill-svc', up === total ? 'healthy' : up === 0 ? 'critical' : 'warning');
             }
         }
 
