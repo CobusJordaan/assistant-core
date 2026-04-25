@@ -4,118 +4,96 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Admin{% endblock %} — assistant-core</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/admin/admin.css">
 </head>
 <body>
-    <nav class="admin-nav">
-        <div class="nav-brand">
-            <span class="nav-brand-sub">assistant-core</span>
-            <span class="nav-brand-main">Admin Dashboard</span>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <div class="sidebar-brand-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+            </div>
+            <div class="sidebar-brand-title">AI PC Admin</div>
+            <div class="sidebar-brand-sub">assistant-core</div>
         </div>
-        <div class="nav-links">
-            <a href="/admin" class="{% if active_page == 'dashboard' %}active{% endif %}">Dashboard</a>
-            <a href="/admin/logs" class="{% if active_page == 'logs' %}active{% endif %}">Logs</a>
-            <a href="/admin/logout" class="nav-logout">Logout</a>
-        </div>
-    </nav>
 
-    <div class="summary-bar" id="summary-bar">
-        <div class="summary-pill" id="pill-cpu">
-            <span class="pill-dot"></span>
-            <span class="pill-label">CPU</span>
-            <span class="pill-value" id="sum-cpu">—</span>
+        <div class="sidebar-section">Navigation</div>
+        <nav class="sidebar-nav">
+            <a href="/admin" class="sidebar-link {% if active_page == 'dashboard' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                Dashboard
+            </a>
+            <a href="/admin#services" class="sidebar-link" data-section="services">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="6" cy="6" r="1"/><circle cx="6" cy="18" r="1"/></svg>
+                Services
+            </a>
+            <a href="/admin#gpu" class="sidebar-link" data-section="gpu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
+                GPU Monitor
+            </a>
+            <a href="/admin/logs" class="sidebar-link {% if active_page == 'logs' %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                Logs
+            </a>
+            <a href="/admin#git" class="sidebar-link" data-section="git">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                Git Repository
+            </a>
+            <a href="/admin#storage" class="sidebar-link" data-section="storage">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                Storage
+            </a>
+
+            <div class="sidebar-spacer"></div>
+        </nav>
+
+        <div class="sidebar-footer">
+            <a href="/admin/logout" class="sidebar-link">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Logout
+            </a>
         </div>
-        <div class="summary-pill" id="pill-ram">
-            <span class="pill-dot"></span>
-            <span class="pill-label">RAM</span>
-            <span class="pill-value" id="sum-ram">—</span>
-        </div>
-        <div class="summary-pill" id="pill-gpu">
-            <span class="pill-dot"></span>
-            <span class="pill-label">GPU</span>
-            <span class="pill-value" id="sum-gpu">—</span>
-        </div>
-        <div class="summary-pill" id="pill-disk">
-            <span class="pill-dot"></span>
-            <span class="pill-label">Disk</span>
-            <span class="pill-value" id="sum-disk">—</span>
-        </div>
-        <div class="summary-pill" id="pill-svc">
-            <span class="pill-dot"></span>
-            <span class="pill-label">Services</span>
-            <span class="pill-value" id="sum-svc">—</span>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <header class="page-header">
+            <div class="page-header-left">
+                <h1>{% block page_title %}AI PC Admin{% endblock %}</h1>
+                <p>{% block page_subtitle %}assistant-core monitoring and control{% endblock %}</p>
+            </div>
+            <div class="page-header-right">
+                <div class="header-updated">
+                    <span class="live-dot" id="live-dot"></span>
+                    <span id="last-updated-text">Loading…</span>
+                </div>
+                <button class="btn btn-ghost btn-sm" onclick="refreshNow()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    Refresh
+                </button>
+            </div>
+        </header>
+
+        <div class="page-body">
+            {% block content %}{% endblock %}
         </div>
     </div>
 
-    <main class="admin-main">
-        <div class="controls-bar">
-            <div class="last-updated">
-                <span class="live-dot" id="live-dot"></span>
-                <span id="last-updated-text">Loading…</span>
-            </div>
-            <button class="btn btn-ghost btn-sm" onclick="refreshNow()">Refresh Now</button>
-        </div>
-
-        {% block content %}{% endblock %}
-    </main>
-
     <script>
         let autoRefreshInterval = null;
-
-        function setPillStatus(pillId, level) {
-            const pill = document.getElementById(pillId);
-            if (!pill) return;
-            pill.classList.remove('pill-healthy', 'pill-warning', 'pill-critical');
-            pill.classList.add('pill-' + level);
-        }
 
         async function fetchStatus() {
             try {
                 const r = await fetch('/admin/api/status');
                 if (r.status === 401) { window.location.href = '/admin/login'; return; }
                 const data = await r.json();
-                updateSummaryBar(data);
+                if (typeof updateMetricStrip === 'function') updateMetricStrip(data);
                 if (typeof updateDashboard === 'function') updateDashboard(data);
                 document.getElementById('last-updated-text').textContent = 'Updated ' + new Date().toLocaleTimeString();
             } catch (e) {
                 document.getElementById('last-updated-text').textContent = 'Refresh failed';
-            }
-        }
-
-        function updateSummaryBar(data) {
-            if (data.cpu) {
-                const cpuPct = data.cpu.percent;
-                document.getElementById('sum-cpu').textContent = cpuPct + '%';
-                setPillStatus('pill-cpu', cpuPct > 90 ? 'critical' : cpuPct > 70 ? 'warning' : 'healthy');
-            }
-            if (data.memory) {
-                const ramPct = data.memory.percent;
-                document.getElementById('sum-ram').textContent = data.memory.used_gb + ' / ' + data.memory.total_gb + ' GB';
-                setPillStatus('pill-ram', ramPct > 90 ? 'critical' : ramPct > 75 ? 'warning' : 'healthy');
-            }
-            if (data.gpu) {
-                const temp = data.gpu.temperature;
-                const util = data.gpu.utilization;
-                const tempStr = temp !== null && temp !== undefined ? temp + '°C' : '';
-                const utilStr = util !== null && util !== undefined ? util + '%' : '';
-                document.getElementById('sum-gpu').textContent = [tempStr, utilStr ? '(' + utilStr + ')' : ''].filter(Boolean).join(' ') || 'N/A';
-                setPillStatus('pill-gpu', (temp > 85 || util > 90) ? 'critical' : (temp > 70 || util > 75) ? 'warning' : 'healthy');
-            } else {
-                document.getElementById('sum-gpu').textContent = 'N/A';
-                setPillStatus('pill-gpu', 'healthy');
-            }
-            if (data.disks && data.disks.length > 0) {
-                const root = data.disks.find(d => d.mount === '/') || data.disks[0];
-                document.getElementById('sum-disk').textContent = root.percent + '%';
-                setPillStatus('pill-disk', root.percent > 95 ? 'critical' : root.percent > 85 ? 'warning' : 'healthy');
-            }
-            if (data.services) {
-                const svcs = Object.values(data.services.services || {});
-                const ctrs = Object.values(data.services.containers || {});
-                const total = svcs.length + ctrs.length;
-                const up = svcs.filter(s => s.active).length + ctrs.filter(c => c.running).length;
-                document.getElementById('sum-svc').textContent = up + '/' + total + ' Healthy';
-                setPillStatus('pill-svc', up === total ? 'healthy' : up === 0 ? 'critical' : 'warning');
             }
         }
 

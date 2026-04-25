@@ -1,47 +1,112 @@
 {% extends "admin/base.html" %}
 {% block title %}Dashboard{% endblock %}
+{% block page_title %}AI PC Admin{% endblock %}
+{% block page_subtitle %}assistant-core monitoring and control{% endblock %}
 
 {% block content %}
+<!-- Metric Strip -->
+<div class="metric-strip" id="metric-strip">
+    <div class="metric-card" id="mc-svc">
+        <div class="metric-icon metric-icon-green">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <div class="metric-info">
+            <div class="metric-value" id="mv-svc">—</div>
+            <div class="metric-label">Services Healthy</div>
+        </div>
+    </div>
+    <div class="metric-card" id="mc-gpu-temp">
+        <div class="metric-icon metric-icon-orange">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+        </div>
+        <div class="metric-info">
+            <div class="metric-value" id="mv-gpu-temp">—</div>
+            <div class="metric-label">GPU Temp</div>
+        </div>
+    </div>
+    <div class="metric-card" id="mc-vram">
+        <div class="metric-icon metric-icon-purple">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
+        </div>
+        <div class="metric-info">
+            <div class="metric-value" id="mv-vram">—</div>
+            <div class="metric-label">GPU VRAM</div>
+        </div>
+    </div>
+    <div class="metric-card" id="mc-cpu">
+        <div class="metric-icon metric-icon-blue">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 1v3"/><path d="M15 1v3"/><path d="M9 20v3"/><path d="M15 20v3"/><path d="M20 9h3"/><path d="M20 14h3"/><path d="M1 9h3"/><path d="M1 14h3"/></svg>
+        </div>
+        <div class="metric-info">
+            <div class="metric-value" id="mv-cpu">—</div>
+            <div class="metric-label">CPU Usage</div>
+        </div>
+    </div>
+    <div class="metric-card" id="mc-ram">
+        <div class="metric-icon metric-icon-cyan">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 19v-3"/><path d="M10 19v-3"/><path d="M14 19v-3"/><path d="M18 19v-3"/><path d="M3 7h18v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M3 7l2-4h14l2 4"/></svg>
+        </div>
+        <div class="metric-info">
+            <div class="metric-value" id="mv-ram">—</div>
+            <div class="metric-label">RAM Usage</div>
+        </div>
+    </div>
+    <div class="metric-card" id="mc-disk">
+        <div class="metric-icon metric-icon-green">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        </div>
+        <div class="metric-info">
+            <div class="metric-value" id="mv-disk">—</div>
+            <div class="metric-label">Disk Usage</div>
+        </div>
+    </div>
+</div>
+
+<!-- Dashboard Grid -->
 <div class="card-grid">
 
     <!-- Services -->
-    <div class="card">
-        <h3>Services</h3>
+    <div class="card" id="card-services">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-green">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="6" cy="6" r="1"/><circle cx="6" cy="18" r="1"/></svg>
+            </div>
+            <h3>Services</h3>
+        </div>
         <div id="services-content">
             {% for name, svc in status.services.services.items() %}
             <div class="svc-row">
                 <div class="svc-info">
-                    <span class="status-dot {{ 'dot-green' if svc.active else 'dot-red' }}"></span>
+                    <span class="svc-dot {{ 'svc-dot-green' if svc.active else 'svc-dot-red' }}"></span>
                     <span class="svc-name">{{ name }}</span>
-                    <span class="svc-badge {{ 'svc-badge-running' if svc.active else 'svc-badge-stopped' }}">
-                        {{ 'Running' if svc.active else 'Stopped' }}
-                    </span>
+                    <span class="svc-badge {{ 'svc-badge-running' if svc.active else 'svc-badge-stopped' }}">{{ 'Running' if svc.active else 'Stopped' }}</span>
                 </div>
                 <div class="svc-actions">
                     <form class="inline-form" onsubmit="return doAction(event, '/admin/action/restart-service', {name: '{{ name }}'}, this)">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="submit" class="btn btn-warning btn-icon" title="Restart {{ name }}">
-                            <span class="spinner spinner-hidden"></span><span class="btn-icon-text">&#x21BB;</span>
+                        <button type="submit" class="btn btn-warning btn-sm" title="Restart {{ name }}">
+                            <span class="spinner spinner-hidden"></span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                            <span class="btn-label">Restart</span>
                         </button>
                     </form>
                 </div>
             </div>
             {% endfor %}
-
             {% for name, ctr in status.services.containers.items() %}
             <div class="svc-row">
                 <div class="svc-info">
-                    <span class="status-dot {{ 'dot-green' if ctr.running else 'dot-red' }}"></span>
+                    <span class="svc-dot {{ 'svc-dot-green' if ctr.running else 'svc-dot-red' }}"></span>
                     <span class="svc-name">{{ name }} <small>(container)</small></span>
-                    <span class="svc-badge {{ 'svc-badge-running' if ctr.running else 'svc-badge-stopped' }}">
-                        {{ 'Running' if ctr.running else 'Stopped' }}
-                    </span>
+                    <span class="svc-badge {{ 'svc-badge-running' if ctr.running else 'svc-badge-stopped' }}">{{ 'Running' if ctr.running else 'Stopped' }}</span>
                 </div>
                 <div class="svc-actions">
                     <form class="inline-form" onsubmit="return doAction(event, '/admin/action/restart-container', {name: '{{ name }}'}, this)">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="submit" class="btn btn-warning btn-icon" title="Restart {{ name }}">
-                            <span class="spinner spinner-hidden"></span><span class="btn-icon-text">&#x21BB;</span>
+                        <button type="submit" class="btn btn-warning btn-sm" title="Restart {{ name }}">
+                            <span class="spinner spinner-hidden"></span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                            <span class="btn-label">Restart</span>
                         </button>
                     </form>
                 </div>
@@ -51,123 +116,140 @@
     </div>
 
     <!-- GPU -->
-    <div class="card">
-        <h3>GPU</h3>
+    <div class="card" id="card-gpu">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-purple">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
+            </div>
+            <h3>GPU Monitor</h3>
+        </div>
         <div id="gpu-content">
             {% if status.gpu %}
             <div class="stat"><label>Model</label><span class="val">{{ status.gpu.name or 'N/A' }}</span></div>
-            <div class="progress-row" id="gpu-temp-row">
+            {% if status.gpu.temperature is not none %}
+            <div class="progress-row">
                 <div class="progress-header">
                     <span class="progress-label">Temperature</span>
-                    <span class="progress-value">{{ status.gpu.temperature if status.gpu.temperature is not none else 'N/A' }}{% if status.gpu.temperature is not none %}°C{% endif %}</span>
+                    <span class="progress-value">{{ status.gpu.temperature }}°C</span>
                 </div>
-                {% if status.gpu.temperature is not none %}
-                <div class="progress-track">
-                    <div class="progress-fill {{ 'progress-red' if status.gpu.temperature > 85 else 'progress-orange' if status.gpu.temperature > 65 else 'progress-green' }}" style="width: {{ (status.gpu.temperature / 100 * 100) | round }}%"></div>
-                </div>
-                {% endif %}
+                <div class="progress-track"><div class="progress-fill {{ 'fill-red' if status.gpu.temperature > 85 else 'fill-orange' if status.gpu.temperature > 65 else 'fill-green' }}" style="width: {{ [status.gpu.temperature, 100] | min }}%"></div></div>
             </div>
-            <div class="progress-row" id="gpu-util-row">
+            {% endif %}
+            {% if status.gpu.utilization is not none %}
+            <div class="progress-row">
                 <div class="progress-header">
                     <span class="progress-label">Utilization</span>
-                    <span class="progress-value">{{ status.gpu.utilization if status.gpu.utilization is not none else 'N/A' }}{% if status.gpu.utilization is not none %}%{% endif %}</span>
+                    <span class="progress-value">{{ status.gpu.utilization }}%</span>
                 </div>
-                {% if status.gpu.utilization is not none %}
-                <div class="progress-track">
-                    <div class="progress-fill {{ 'progress-red' if status.gpu.utilization > 85 else 'progress-orange' if status.gpu.utilization > 60 else 'progress-green' }}" style="width: {{ status.gpu.utilization }}%"></div>
-                </div>
-                {% endif %}
+                <div class="progress-track"><div class="progress-fill {{ 'fill-red' if status.gpu.utilization > 85 else 'fill-orange' if status.gpu.utilization > 60 else 'fill-green' }}" style="width: {{ status.gpu.utilization }}%"></div></div>
             </div>
-            <div class="progress-row" id="gpu-vram-row">
+            {% endif %}
+            {% if status.gpu.memory_used is not none and status.gpu.memory_total is not none and status.gpu.memory_total > 0 %}
+            {% set vram_pct = (status.gpu.memory_used / status.gpu.memory_total * 100) | round %}
+            <div class="progress-row">
                 <div class="progress-header">
                     <span class="progress-label">VRAM</span>
-                    <span class="progress-value">{{ status.gpu.memory_used if status.gpu.memory_used is not none else 'N/A' }} / {{ status.gpu.memory_total if status.gpu.memory_total is not none else 'N/A' }} MB</span>
+                    <span class="progress-value">{{ status.gpu.memory_used }} / {{ status.gpu.memory_total }} MB</span>
                 </div>
-                {% if status.gpu.memory_used is not none and status.gpu.memory_total is not none and status.gpu.memory_total > 0 %}
-                <div class="progress-track">
-                    {% set vram_pct = (status.gpu.memory_used / status.gpu.memory_total * 100) | round %}
-                    <div class="progress-fill {{ 'progress-red' if vram_pct > 90 else 'progress-orange' if vram_pct > 70 else 'progress-green' }}" style="width: {{ vram_pct }}%"></div>
-                </div>
-                {% endif %}
+                <div class="progress-track"><div class="progress-fill {{ 'fill-red' if vram_pct > 90 else 'fill-orange' if vram_pct > 70 else 'fill-green' }}" style="width: {{ vram_pct }}%"></div></div>
             </div>
-            <div class="stat"><label>Power</label><span class="val">{{ status.gpu.power_draw if status.gpu.power_draw is not none else 'N/A' }} / {{ status.gpu.power_limit if status.gpu.power_limit is not none else 'N/A' }} W</span></div>
-            <div class="stat"><label>Fan</label><span class="val">{{ status.gpu.fan_speed if status.gpu.fan_speed is not none else 'N/A' }}{% if status.gpu.fan_speed is not none %}%{% endif %}</span></div>
+            {% endif %}
+            {% if status.gpu.power_draw is not none and status.gpu.power_limit is not none and status.gpu.power_limit > 0 %}
+            {% set pwr_pct = (status.gpu.power_draw / status.gpu.power_limit * 100) | round %}
+            <div class="progress-row">
+                <div class="progress-header">
+                    <span class="progress-label">Power</span>
+                    <span class="progress-value">{{ status.gpu.power_draw }} / {{ status.gpu.power_limit }} W</span>
+                </div>
+                <div class="progress-track"><div class="progress-fill {{ 'fill-red' if pwr_pct > 90 else 'fill-orange' if pwr_pct > 75 else 'fill-blue' }}" style="width: {{ pwr_pct }}%"></div></div>
+            </div>
+            {% endif %}
+            <div class="stat"><label>Fan Speed</label><span class="val">{{ status.gpu.fan_speed if status.gpu.fan_speed is not none else 'N/A' }}{% if status.gpu.fan_speed is not none %}%{% endif %}</span></div>
             {% else %}
-            <div class="stat"><label>Status</label><span class="val">Not available</span></div>
+            <div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">Not available</span></div>
             {% endif %}
         </div>
     </div>
 
     <!-- CPU / RAM -->
-    <div class="card">
-        <h3>CPU / RAM</h3>
+    <div class="card" id="card-cpu">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 1v3"/><path d="M15 1v3"/><path d="M9 20v3"/><path d="M15 20v3"/><path d="M20 9h3"/><path d="M20 14h3"/><path d="M1 9h3"/><path d="M1 14h3"/></svg>
+            </div>
+            <h3>CPU / RAM</h3>
+        </div>
         <div id="cpu-content">
             <div class="progress-row">
                 <div class="progress-header">
                     <span class="progress-label">CPU Usage</span>
                     <span class="progress-value">{{ status.cpu.percent }}%</span>
                 </div>
-                <div class="progress-track">
-                    <div class="progress-fill {{ 'progress-red' if status.cpu.percent > 90 else 'progress-orange' if status.cpu.percent > 70 else 'progress-green' }}" style="width: {{ status.cpu.percent }}%"></div>
-                </div>
+                <div class="progress-track"><div class="progress-fill {{ 'fill-red' if status.cpu.percent > 90 else 'fill-orange' if status.cpu.percent > 70 else 'fill-green' }}" style="width: {{ [status.cpu.percent, 1] | max }}%"></div></div>
             </div>
             <div class="progress-row">
                 <div class="progress-header">
                     <span class="progress-label">RAM</span>
                     <span class="progress-value">{{ status.memory.used_gb }} / {{ status.memory.total_gb }} GB ({{ status.memory.percent }}%)</span>
                 </div>
-                <div class="progress-track">
-                    <div class="progress-fill {{ 'progress-red' if status.memory.percent > 90 else 'progress-orange' if status.memory.percent > 75 else 'progress-green' }}" style="width: {{ status.memory.percent }}%"></div>
-                </div>
+                <div class="progress-track"><div class="progress-fill {{ 'fill-red' if status.memory.percent > 90 else 'fill-orange' if status.memory.percent > 75 else 'fill-blue' }}" style="width: {{ status.memory.percent }}%"></div></div>
             </div>
             <div class="stat"><label>Cores</label><span class="val">{{ status.cpu.count }}</span></div>
-            {% if status.cpu.freq %}
-            <div class="stat"><label>Frequency</label><span class="val">{{ status.cpu.freq }} MHz</span></div>
-            {% endif %}
-            {% if status.cpu.load_avg %}
-            <div class="stat"><label>Load Average</label><span class="val">{{ status.cpu.load_avg | join(', ') }}</span></div>
-            {% endif %}
-            {% if status.cpu_temp is not none %}
-            <div class="stat"><label>CPU Temp</label><span class="val">{{ status.cpu_temp }}°C</span></div>
-            {% endif %}
+            {% if status.cpu.freq %}<div class="stat"><label>Frequency</label><span class="val">{{ status.cpu.freq }} MHz</span></div>{% endif %}
+            {% if status.cpu.load_avg %}<div class="stat"><label>Load Average</label><span class="val">{{ status.cpu.load_avg | join(', ') }}</span></div>{% endif %}
+            {% if status.cpu_temp is not none %}<div class="stat"><label>CPU Temp</label><span class="val">{{ status.cpu_temp }}°C</span></div>{% endif %}
         </div>
     </div>
 
     <!-- Disk -->
-    <div class="card">
-        <h3>Disk</h3>
+    <div class="card" id="card-disk">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-green">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            </div>
+            <h3>Disk</h3>
+        </div>
         <div id="disk-content">
             {% for d in status.disks %}
-            <div class="progress-row {{ 'disk-critical' if d.critical else 'disk-warning' if d.warning else '' }}">
+            <div class="progress-row">
                 <div class="progress-header">
                     <span class="progress-label">{{ d.mount }}</span>
-                    <span class="progress-value">{{ d.used_gb }} / {{ d.total_gb }} GB ({{ d.percent }}%)</span>
+                    <span class="progress-value">{{ d.used_gb }} / {{ d.total_gb }} GB <span class="card-badge {{ 'badge-red' if d.critical else 'badge-orange' if d.warning else 'badge-green' }}">{{ d.percent }}%</span></span>
                 </div>
-                <div class="progress-track">
-                    <div class="progress-fill {{ 'progress-red' if d.critical else 'progress-orange' if d.warning else 'progress-green' }}" style="width: {{ d.percent }}%"></div>
-                </div>
+                <div class="progress-track"><div class="progress-fill {{ 'fill-red' if d.critical else 'fill-orange' if d.warning else 'fill-green' }}" style="width: {{ d.percent }}%"></div></div>
             </div>
             {% endfor %}
         </div>
     </div>
 
     <!-- Git -->
-    <div class="card">
-        <h3>Git Repository</h3>
+    <div class="card" id="card-git">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-orange">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+            </div>
+            <h3>Git Repository</h3>
+            {% if status.git.clean %}
+            <span class="card-badge badge-green">Clean</span>
+            {% else %}
+            <span class="card-badge badge-orange">{{ status.git.dirty_files }} changed</span>
+            {% endif %}
+        </div>
         <div id="git-content">
-            <div class="stat"><label>Branch</label><span class="val">{{ status.git.branch }}</span></div>
-            <div class="stat"><label>Status</label><span class="val">{{ 'Clean' if status.git.clean else 'Dirty (' + status.git.dirty_files|string + ' files)' }}</span></div>
+            <div class="stat"><label>Branch</label><span class="val"><span class="git-branch">{{ status.git.branch }}</span></span></div>
             {% if status.git.last_commit %}
-            <div class="stat"><label>Commit</label><span class="val"><span class="git-commit-hash">{{ status.git.last_commit.hash }}</span></span></div>
-            <div class="stat"><label>Message</label><span class="val">{{ status.git.last_commit.message }}</span></div>
+            <div class="stat"><label>Commit</label><span class="val"><span class="git-hash">{{ status.git.last_commit.hash }}</span></span></div>
+            <div class="stat"><label>Message</label><span class="val">{{ status.git.last_commit.message if status.git.last_commit.message and status.git.last_commit.message != '0' else 'No message' }}</span></div>
             <div class="stat"><label>Updated</label><span class="val">{{ status.git.last_commit.relative_time }}</span></div>
             {% endif %}
         </div>
-        <div style="margin-top: 12px;">
+        <div style="margin-top: 14px;">
             <form class="inline-form" style="display:block;" onsubmit="return doAction(event, '/admin/action/git-pull', {}, this)">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn btn-primary btn-full">
-                    <span class="spinner spinner-hidden"></span> Git Pull
+                    <span class="spinner spinner-hidden"></span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span class="btn-label">Git Pull</span>
                 </button>
             </form>
             <div class="git-output" id="git-output"></div>
@@ -175,26 +257,36 @@
     </div>
 
     <!-- Database -->
-    <div class="card">
-        <h3>Database / Storage</h3>
+    <div class="card" id="card-storage">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-cyan">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            </div>
+            <h3>Storage</h3>
+        </div>
         <div id="db-content">
             {% if status.databases %}
             {% for db in status.databases %}
             <div class="stat"><label>{{ db.name }}</label><span class="val">{{ db.size_kb }} KB</span></div>
             {% endfor %}
             {% else %}
-            <div class="stat"><label>Status</label><span class="val">No database files detected</span></div>
+            <div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">No database files detected</span></div>
             {% endif %}
         </div>
     </div>
 
     <!-- System -->
-    <div class="card">
-        <h3>System</h3>
+    <div class="card" id="card-system">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </div>
+            <h3>System</h3>
+        </div>
         <div id="system-content">
             <div class="stat"><label>Uptime</label><span class="val">{{ status.uptime }}</span></div>
             {% if status.version %}
-            <div class="stat"><label>Version</label><span class="val"><span class="git-commit-hash">{{ status.version.commit }}</span></span></div>
+            <div class="stat"><label>Version</label><span class="val"><span class="git-hash">{{ status.version.commit }}</span></span></div>
             {% endif %}
         </div>
     </div>
@@ -208,161 +300,171 @@ function v(val, suffix) {
     return suffix ? val + suffix : val;
 }
 
-function progressColor(pct, thresholds) {
-    const [warnAt, critAt] = thresholds || [70, 90];
-    if (pct > critAt) return 'progress-red';
-    if (pct > warnAt) return 'progress-orange';
-    return 'progress-green';
+function fillClass(pct, warnAt, critAt) {
+    if (pct > (critAt || 90)) return 'fill-red';
+    if (pct > (warnAt || 70)) return 'fill-orange';
+    return 'fill-green';
 }
 
-function makeProgress(label, value, pct, colorClass) {
+function makeBar(label, value, pct, cls) {
     return `<div class="progress-row">
-        <div class="progress-header">
-            <span class="progress-label">${label}</span>
-            <span class="progress-value">${value}</span>
-        </div>
-        <div class="progress-track">
-            <div class="progress-fill ${colorClass}" style="width: ${Math.min(Math.max(pct, 1), 100)}%"></div>
-        </div>
+        <div class="progress-header"><span class="progress-label">${label}</span><span class="progress-value">${value}</span></div>
+        <div class="progress-track"><div class="progress-fill ${cls}" style="width:${Math.min(Math.max(pct,1),100)}%"></div></div>
     </div>`;
 }
 
+/* SVG icon strings for JS-rendered content */
+const SVG_REFRESH = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
+
+function updateMetricStrip(data) {
+    /* Services */
+    if (data.services) {
+        const svcs = Object.values(data.services.services || {});
+        const ctrs = Object.values(data.services.containers || {});
+        const total = svcs.length + ctrs.length;
+        const up = svcs.filter(s => s.active).length + ctrs.filter(c => c.running).length;
+        document.getElementById('mv-svc').textContent = up + ' / ' + total;
+        const icon = document.querySelector('#mc-svc .metric-icon');
+        icon.className = 'metric-icon ' + (up === total ? 'metric-icon-green' : up === 0 ? 'metric-icon-red' : 'metric-icon-orange');
+    }
+    /* GPU */
+    if (data.gpu) {
+        document.getElementById('mv-gpu-temp').textContent = v(data.gpu.temperature, '°C');
+        document.getElementById('mv-vram').textContent = v(data.gpu.memory_used) + ' / ' + v(data.gpu.memory_total) + ' MB';
+        const t = data.gpu.temperature;
+        const ti = document.querySelector('#mc-gpu-temp .metric-icon');
+        ti.className = 'metric-icon ' + (t > 85 ? 'metric-icon-red' : t > 65 ? 'metric-icon-orange' : 'metric-icon-green');
+    } else {
+        document.getElementById('mv-gpu-temp').textContent = 'N/A';
+        document.getElementById('mv-vram').textContent = 'N/A';
+    }
+    /* CPU */
+    if (data.cpu) {
+        document.getElementById('mv-cpu').textContent = data.cpu.percent + '%';
+        const ci = document.querySelector('#mc-cpu .metric-icon');
+        ci.className = 'metric-icon ' + (data.cpu.percent > 90 ? 'metric-icon-red' : data.cpu.percent > 70 ? 'metric-icon-orange' : 'metric-icon-blue');
+    }
+    /* RAM */
+    if (data.memory) {
+        document.getElementById('mv-ram').textContent = data.memory.used_gb + ' / ' + data.memory.total_gb + ' GB';
+    }
+    /* Disk */
+    if (data.disks && data.disks.length > 0) {
+        const root = data.disks.find(d => d.mount === '/') || data.disks[0];
+        document.getElementById('mv-disk').textContent = root.percent + '%';
+        const di = document.querySelector('#mc-disk .metric-icon');
+        di.className = 'metric-icon ' + (root.percent > 95 ? 'metric-icon-red' : root.percent > 85 ? 'metric-icon-orange' : 'metric-icon-green');
+    }
+}
+
 function updateDashboard(data) {
-    // Services
+    /* Services */
     if (data.services) {
         let html = '';
-        const svcs = data.services.services || {};
-        const ctrs = data.services.containers || {};
-        for (const [name, svc] of Object.entries(svcs)) {
-            const dot = svc.active ? 'dot-green' : 'dot-red';
-            const badge = svc.active ? 'svc-badge-running' : 'svc-badge-stopped';
-            const badgeText = svc.active ? 'Running' : 'Stopped';
-            html += `<div class="svc-row">
-                <div class="svc-info">
-                    <span class="status-dot ${dot}"></span>
-                    <span class="svc-name">${name}</span>
-                    <span class="svc-badge ${badge}">${badgeText}</span>
-                </div>
-                <div class="svc-actions">
-                    <form class="inline-form" onsubmit="return doAction(event, '/admin/action/restart-service', {name:'${name}'}, this)">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="submit" class="btn btn-warning btn-icon" title="Restart ${name}">
-                            <span class="spinner spinner-hidden"></span><span class="btn-icon-text">&#x21BB;</span>
-                        </button>
-                    </form>
-                </div>
-            </div>`;
+        for (const [name, svc] of Object.entries(data.services.services || {})) {
+            html += `<div class="svc-row"><div class="svc-info">
+                <span class="svc-dot ${svc.active?'svc-dot-green':'svc-dot-red'}"></span>
+                <span class="svc-name">${name}</span>
+                <span class="svc-badge ${svc.active?'svc-badge-running':'svc-badge-stopped'}">${svc.active?'Running':'Stopped'}</span>
+            </div><div class="svc-actions">
+                <form class="inline-form" onsubmit="return doAction(event,'/admin/action/restart-service',{name:'${name}'},this)">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-warning btn-sm" title="Restart ${name}"><span class="spinner spinner-hidden"></span>${SVG_REFRESH}<span class="btn-label">Restart</span></button>
+                </form></div></div>`;
         }
-        for (const [name, ctr] of Object.entries(ctrs)) {
-            const dot = ctr.running ? 'dot-green' : 'dot-red';
-            const badge = ctr.running ? 'svc-badge-running' : 'svc-badge-stopped';
-            const badgeText = ctr.running ? 'Running' : 'Stopped';
-            html += `<div class="svc-row">
-                <div class="svc-info">
-                    <span class="status-dot ${dot}"></span>
-                    <span class="svc-name">${name} <small>(container)</small></span>
-                    <span class="svc-badge ${badge}">${badgeText}</span>
-                </div>
-                <div class="svc-actions">
-                    <form class="inline-form" onsubmit="return doAction(event, '/admin/action/restart-container', {name:'${name}'}, this)">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="submit" class="btn btn-warning btn-icon" title="Restart ${name}">
-                            <span class="spinner spinner-hidden"></span><span class="btn-icon-text">&#x21BB;</span>
-                        </button>
-                    </form>
-                </div>
-            </div>`;
+        for (const [name, ctr] of Object.entries(data.services.containers || {})) {
+            html += `<div class="svc-row"><div class="svc-info">
+                <span class="svc-dot ${ctr.running?'svc-dot-green':'svc-dot-red'}"></span>
+                <span class="svc-name">${name} <small>(container)</small></span>
+                <span class="svc-badge ${ctr.running?'svc-badge-running':'svc-badge-stopped'}">${ctr.running?'Running':'Stopped'}</span>
+            </div><div class="svc-actions">
+                <form class="inline-form" onsubmit="return doAction(event,'/admin/action/restart-container',{name:'${name}'},this)">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-warning btn-sm" title="Restart ${name}"><span class="spinner spinner-hidden"></span>${SVG_REFRESH}<span class="btn-label">Restart</span></button>
+                </form></div></div>`;
         }
         document.getElementById('services-content').innerHTML = html;
     }
 
-    // GPU
+    /* GPU */
     if (data.gpu) {
         const g = data.gpu;
-        let gpuHtml = `<div class="stat"><label>Model</label><span class="val">${g.name || 'N/A'}</span></div>`;
-        if (g.temperature !== null && g.temperature !== undefined) {
-            gpuHtml += makeProgress('Temperature', g.temperature + '°C', g.temperature, progressColor(g.temperature, [65, 85]));
-        } else {
-            gpuHtml += `<div class="stat"><label>Temperature</label><span class="val">N/A</span></div>`;
+        let h = `<div class="stat"><label>Model</label><span class="val">${g.name||'N/A'}</span></div>`;
+        if (g.temperature != null) h += makeBar('Temperature', g.temperature+'°C', g.temperature, fillClass(g.temperature,65,85));
+        if (g.utilization != null) h += makeBar('Utilization', g.utilization+'%', g.utilization, fillClass(g.utilization,60,85));
+        if (g.memory_used != null && g.memory_total != null && g.memory_total > 0) {
+            const p = g.memory_used/g.memory_total*100;
+            h += makeBar('VRAM', g.memory_used+' / '+g.memory_total+' MB', p, fillClass(p,70,90));
         }
-        if (g.utilization !== null && g.utilization !== undefined) {
-            gpuHtml += makeProgress('Utilization', g.utilization + '%', g.utilization, progressColor(g.utilization, [60, 85]));
-        } else {
-            gpuHtml += `<div class="stat"><label>Utilization</label><span class="val">N/A</span></div>`;
+        if (g.power_draw != null && g.power_limit != null && g.power_limit > 0) {
+            const p = g.power_draw/g.power_limit*100;
+            h += makeBar('Power', g.power_draw+' / '+g.power_limit+' W', p, 'fill-blue');
         }
-        if (g.memory_used !== null && g.memory_total !== null && g.memory_used !== undefined && g.memory_total !== undefined && g.memory_total > 0) {
-            const vramPct = (g.memory_used / g.memory_total * 100);
-            gpuHtml += makeProgress('VRAM', g.memory_used + ' / ' + g.memory_total + ' MB', vramPct, progressColor(vramPct, [70, 90]));
-        } else {
-            gpuHtml += `<div class="stat"><label>VRAM</label><span class="val">${v(g.memory_used)} / ${v(g.memory_total)} MB</span></div>`;
-        }
-        gpuHtml += `<div class="stat"><label>Power</label><span class="val">${v(g.power_draw)} / ${v(g.power_limit)} W</span></div>`;
-        gpuHtml += `<div class="stat"><label>Fan</label><span class="val">${v(g.fan_speed, '%')}</span></div>`;
-        document.getElementById('gpu-content').innerHTML = gpuHtml;
+        h += `<div class="stat"><label>Fan Speed</label><span class="val">${v(g.fan_speed,'%')}</span></div>`;
+        document.getElementById('gpu-content').innerHTML = h;
     } else {
-        document.getElementById('gpu-content').innerHTML = '<div class="stat"><label>Status</label><span class="val">Not available</span></div>';
+        document.getElementById('gpu-content').innerHTML = '<div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">Not available</span></div>';
     }
 
-    // CPU/RAM
+    /* CPU/RAM */
     if (data.cpu && data.memory) {
-        let cpuHtml = makeProgress('CPU Usage', data.cpu.percent + '%', data.cpu.percent, progressColor(data.cpu.percent, [70, 90]));
-        cpuHtml += makeProgress('RAM', data.memory.used_gb + ' / ' + data.memory.total_gb + ' GB (' + data.memory.percent + '%)', data.memory.percent, progressColor(data.memory.percent, [75, 90]));
-        cpuHtml += `<div class="stat"><label>Cores</label><span class="val">${data.cpu.count}</span></div>`;
-        if (data.cpu.freq) cpuHtml += `<div class="stat"><label>Frequency</label><span class="val">${data.cpu.freq} MHz</span></div>`;
-        if (data.cpu.load_avg) cpuHtml += `<div class="stat"><label>Load Average</label><span class="val">${data.cpu.load_avg.join(', ')}</span></div>`;
-        if (data.cpu_temp !== null && data.cpu_temp !== undefined) cpuHtml += `<div class="stat"><label>CPU Temp</label><span class="val">${data.cpu_temp}°C</span></div>`;
-        document.getElementById('cpu-content').innerHTML = cpuHtml;
+        let h = makeBar('CPU Usage', data.cpu.percent+'%', data.cpu.percent, fillClass(data.cpu.percent,70,90));
+        h += makeBar('RAM', data.memory.used_gb+' / '+data.memory.total_gb+' GB ('+data.memory.percent+'%)', data.memory.percent, data.memory.percent>90?'fill-red':data.memory.percent>75?'fill-orange':'fill-blue');
+        h += `<div class="stat"><label>Cores</label><span class="val">${data.cpu.count}</span></div>`;
+        if (data.cpu.freq) h += `<div class="stat"><label>Frequency</label><span class="val">${data.cpu.freq} MHz</span></div>`;
+        if (data.cpu.load_avg) h += `<div class="stat"><label>Load Average</label><span class="val">${data.cpu.load_avg.join(', ')}</span></div>`;
+        if (data.cpu_temp != null) h += `<div class="stat"><label>CPU Temp</label><span class="val">${data.cpu_temp}°C</span></div>`;
+        document.getElementById('cpu-content').innerHTML = h;
     }
 
-    // Disk
+    /* Disk */
     if (data.disks) {
-        let diskHtml = '';
+        let h = '';
         for (const d of data.disks) {
-            const cls = d.critical ? 'disk-critical' : d.warning ? 'disk-warning' : '';
-            const colorCls = d.critical ? 'progress-red' : d.warning ? 'progress-orange' : 'progress-green';
-            diskHtml += `<div class="progress-row ${cls}">
-                <div class="progress-header">
-                    <span class="progress-label">${d.mount}</span>
-                    <span class="progress-value">${d.used_gb} / ${d.total_gb} GB (${d.percent}%)</span>
-                </div>
-                <div class="progress-track">
-                    <div class="progress-fill ${colorCls}" style="width: ${d.percent}%"></div>
-                </div>
-            </div>`;
+            const bc = d.critical ? 'badge-red' : d.warning ? 'badge-orange' : 'badge-green';
+            const fc = d.critical ? 'fill-red' : d.warning ? 'fill-orange' : 'fill-green';
+            h += `<div class="progress-row"><div class="progress-header">
+                <span class="progress-label">${d.mount}</span>
+                <span class="progress-value">${d.used_gb} / ${d.total_gb} GB <span class="card-badge ${bc}">${d.percent}%</span></span>
+            </div><div class="progress-track"><div class="progress-fill ${fc}" style="width:${d.percent}%"></div></div></div>`;
         }
-        document.getElementById('disk-content').innerHTML = diskHtml;
+        document.getElementById('disk-content').innerHTML = h;
     }
 
-    // Git
+    /* Git */
     if (data.git) {
         const g = data.git;
-        let gitHtml = `<div class="stat"><label>Branch</label><span class="val">${g.branch}</span></div>
-            <div class="stat"><label>Status</label><span class="val">${g.clean ? 'Clean' : 'Dirty (' + g.dirty_files + ' files)'}</span></div>`;
+        const badge = g.clean ? '<span class="card-badge badge-green">Clean</span>' : `<span class="card-badge badge-orange">${g.dirty_files} changed</span>`;
+        /* Update header badge */
+        const gitHeader = document.querySelector('#card-git .card-header');
+        const existingBadge = gitHeader.querySelector('.card-badge');
+        if (existingBadge) existingBadge.outerHTML = badge;
+
+        let h = `<div class="stat"><label>Branch</label><span class="val"><span class="git-branch">${g.branch}</span></span></div>`;
         if (g.last_commit) {
-            gitHtml += `<div class="stat"><label>Commit</label><span class="val"><span class="git-commit-hash">${g.last_commit.hash}</span></span></div>
-                <div class="stat"><label>Message</label><span class="val">${g.last_commit.message}</span></div>
-                <div class="stat"><label>Updated</label><span class="val">${g.last_commit.relative_time}</span></div>`;
+            h += `<div class="stat"><label>Commit</label><span class="val"><span class="git-hash">${g.last_commit.hash}</span></span></div>`;
+            const msg = (g.last_commit.message && g.last_commit.message !== '0') ? g.last_commit.message : 'No message';
+            h += `<div class="stat"><label>Message</label><span class="val">${msg}</span></div>`;
+            h += `<div class="stat"><label>Updated</label><span class="val">${g.last_commit.relative_time}</span></div>`;
         }
-        document.getElementById('git-content').innerHTML = gitHtml;
+        document.getElementById('git-content').innerHTML = h;
     }
 
-    // Databases
+    /* DB */
     if (data.databases && data.databases.length > 0) {
-        let dbHtml = '';
-        for (const db of data.databases) {
-            dbHtml += `<div class="stat"><label>${db.name}</label><span class="val">${db.size_kb} KB</span></div>`;
-        }
-        document.getElementById('db-content').innerHTML = dbHtml;
+        let h = '';
+        for (const db of data.databases) h += `<div class="stat"><label>${db.name}</label><span class="val">${db.size_kb} KB</span></div>`;
+        document.getElementById('db-content').innerHTML = h;
     } else {
-        document.getElementById('db-content').innerHTML = '<div class="stat"><label>Status</label><span class="val">No database files detected</span></div>';
+        document.getElementById('db-content').innerHTML = '<div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">No database files detected</span></div>';
     }
 
-    // System
+    /* System */
     if (data.uptime || data.version) {
-        let sysHtml = '';
-        if (data.uptime) sysHtml += `<div class="stat"><label>Uptime</label><span class="val">${data.uptime}</span></div>`;
-        if (data.version) sysHtml += `<div class="stat"><label>Version</label><span class="val"><span class="git-commit-hash">${data.version.commit}</span></span></div>`;
-        document.getElementById('system-content').innerHTML = sysHtml;
+        let h = '';
+        if (data.uptime) h += `<div class="stat"><label>Uptime</label><span class="val">${data.uptime}</span></div>`;
+        if (data.version) h += `<div class="stat"><label>Version</label><span class="val"><span class="git-hash">${data.version.commit}</span></span></div>`;
+        document.getElementById('system-content').innerHTML = h;
     }
 }
 
@@ -370,23 +472,20 @@ async function doAction(event, url, extraData, form) {
     event.preventDefault();
     const btn = form.querySelector('button');
     const spinner = form.querySelector('.spinner');
-    const iconText = form.querySelector('.btn-icon-text');
+    const label = form.querySelector('.btn-label');
     const csrfInput = form.querySelector('input[name="csrf_token"]');
 
     btn.disabled = true;
     spinner.classList.remove('spinner-hidden');
-    if (iconText) iconText.style.display = 'none';
+    if (label) label.textContent = 'Working...';
 
     const body = new URLSearchParams();
     body.append('csrf_token', csrfInput.value);
-    for (const [k, val] of Object.entries(extraData)) {
-        body.append(k, val);
-    }
+    for (const [k, val] of Object.entries(extraData)) body.append(k, val);
 
     try {
         const r = await fetch(url, { method: 'POST', body: body });
         const result = await r.json();
-
         if (result.output) {
             const gitOut = document.getElementById('git-output');
             if (gitOut && url.includes('git')) {
@@ -394,15 +493,14 @@ async function doAction(event, url, extraData, form) {
                 gitOut.classList.add('visible');
             }
         }
-
-        if (!result.success) {
-            alert(result.message || 'Action failed');
-        }
+        if (!result.success) alert(result.message || 'Action failed');
     } catch (e) {
         alert('Request failed: ' + e.message);
     } finally {
         spinner.classList.add('spinner-hidden');
-        if (iconText) iconText.style.display = '';
+        if (label) {
+            label.textContent = url.includes('git') ? 'Git Pull' : 'Restart';
+        }
         btn.disabled = false;
     }
 
