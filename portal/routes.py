@@ -47,7 +47,8 @@ def _get_voice_config(db) -> dict:
     """Read voice-related admin settings."""
     config = {}
     keys = ["voice_enabled", "allow_browser_stt", "allow_whisper_fallback",
-            "tts_piper_url", "tts_voice", "stt_whisper_url", "voice_max_seconds",
+            "tts_piper_url", "tts_voice", "tts_afrikaans_voice",
+            "stt_whisper_url", "voice_max_seconds",
             "voice_audio_dir", "stt_provider"]
     if db and db.available:
         for key in keys:
@@ -589,7 +590,9 @@ async def api_voice(request: Request):
                 json={"input": tts_text, "voice": tts_voice},
             )
             if tts_resp.status_code == 200:
-                filename = f"{uuid.uuid4().hex}.wav"
+                content_type = tts_resp.headers.get("content-type", "audio/wav")
+                ext = ".mp3" if "mpeg" in content_type else ".wav"
+                filename = f"{uuid.uuid4().hex}{ext}"
                 filepath = os.path.join(audio_dir, filename)
                 with open(filepath, "wb") as f:
                     f.write(tts_resp.content)
@@ -616,7 +619,7 @@ async def api_audio(request: Request, filename: str):
         return JSONResponse(status_code=401, content={"error": "Not logged in"})
 
     # Validate filename to prevent path traversal
-    if not re.match(r"^[a-f0-9]+\.wav$", filename):
+    if not re.match(r"^[a-f0-9]+\.(wav|mp3)$", filename):
         return JSONResponse(status_code=400, content={"error": "Invalid filename"})
 
     db = _get_db(request)
@@ -627,4 +630,5 @@ async def api_audio(request: Request, filename: str):
     if not os.path.isfile(filepath):
         return JSONResponse(status_code=404, content={"error": "Audio not found"})
 
-    return FileResponse(filepath, media_type="audio/wav")
+    media = "audio/mpeg" if filename.endswith(".mp3") else "audio/wav"
+    return FileResponse(filepath, media_type=media)

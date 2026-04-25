@@ -335,6 +335,7 @@ class AdminDB:
             ("allow_whisper_fallback", "true", "bool", 0),
             ("tts_piper_url", "http://127.0.0.1:5400", "string", 0),
             ("tts_voice", "en_US-lessac-medium", "string", 0),
+            ("tts_afrikaans_voice", "af-ZA-AdriNeural", "string", 0),
             ("voice_max_seconds", "60", "int", 0),
             ("voice_audio_dir", "/opt/ai-assistant/data/portal/audio", "string", 0),
         ]

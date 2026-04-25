@@ -1180,6 +1180,7 @@ async def api_voice_settings(request: Request):
         "allow_whisper_fallback": ("bool", 0),
         "tts_piper_url": ("string", 0),
         "tts_voice": ("string", 0),
+        "tts_afrikaans_voice": ("string", 0),
         "voice_max_seconds": ("int", 0),
         "voice_audio_dir": ("string", 0),
     }
@@ -1265,7 +1266,8 @@ async def api_voice_test_tts(request: Request):
                 return JSONResponse(status_code=502, content={"error": f"TTS {r.status_code}: {detail}"})
 
             from starlette.responses import Response
-            return Response(content=r.content, media_type="audio/wav")
+            content_type = r.headers.get("content-type", "audio/wav")
+            return Response(content=r.content, media_type=content_type)
     except Exception as e:
         return JSONResponse(status_code=502, content={"error": str(e)})
 

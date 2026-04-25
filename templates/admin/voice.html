@@ -118,10 +118,8 @@
                 <h4 style="font-size:0.85rem; font-weight:600; margin-bottom:12px; color:var(--text);">Text-to-Speech (TTS)</h4>
 
                 <div class="form-group">
-                    <label class="form-label">TTS Provider</label>
-                    <select class="form-select" disabled>
-                        <option selected>Piper TTS</option>
-                    </select>
+                    <label class="form-label">TTS Providers</label>
+                    <span style="font-size:0.75rem; color:var(--muted); display:block; margin-top:2px;">Piper (English) + Edge TTS (Afrikaans)</span>
                 </div>
 
                 <div class="form-group">
@@ -131,9 +129,15 @@
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Voice Name</label>
+                    <label class="form-label">English Voice (Piper)</label>
                     <input type="text" class="form-input" id="tts_voice" name="tts_voice"
                            value="{{ voice_settings.get('tts_voice', 'en_US-lessac-medium') }}">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Afrikaans Voice (Edge TTS)</label>
+                    <input type="text" class="form-input" id="tts_afrikaans_voice" name="tts_afrikaans_voice"
+                           value="{{ voice_settings.get('tts_afrikaans_voice', 'af-ZA-AdriNeural') }}">
                 </div>
             </div>
         </div>
@@ -205,6 +209,7 @@ async function saveSettings(e) {
     fd.append('allow_whisper_fallback', document.getElementById('allow_whisper_fallback').checked ? 'true' : 'false');
     fd.append('tts_piper_url', document.getElementById('tts_piper_url').value);
     fd.append('tts_voice', document.getElementById('tts_voice').value);
+    fd.append('tts_afrikaans_voice', document.getElementById('tts_afrikaans_voice').value);
     fd.append('voice_max_seconds', document.getElementById('voice_max_seconds').value);
     fd.append('voice_audio_dir', document.getElementById('voice_audio_dir').value);
 
