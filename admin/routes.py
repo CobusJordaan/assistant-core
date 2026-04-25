@@ -1230,6 +1230,42 @@ async def api_voice_health(request: Request):
     return result
 
 
+@router.post("/api/voice/test-tts")
+async def api_voice_test_tts(request: Request):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    import httpx
+
+    body = await request.json()
+    text = (body.get("input") or "").strip()
+    voice = body.get("voice", "en_US-lessac-medium")
+    if not text:
+        return JSONResponse(status_code=400, content={"error": "No text provided"})
+
+    admin_db = _get_admin_db(request)
+    tts_url = "http://127.0.0.1:5400"
+    if admin_db and admin_db.available:
+        tts_row = admin_db.get_setting_raw("tts_piper_url")
+        if tts_row:
+            tts_url = tts_row["value"]
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+            r = await client.post(
+                f"{tts_url}/v1/audio/speech",
+                json={"input": text, "voice": voice},
+            )
+            if r.status_code != 200:
+                return JSONResponse(status_code=502, content={"error": f"TTS returned {r.status_code}"})
+
+            from starlette.responses import Response
+            return Response(content=r.content, media_type="audio/wav")
+    except Exception as e:
+        return JSONResponse(status_code=502, content={"error": str(e)})
+
+
 # ---------------------------------------------------------------------------
 # Users page
 # ---------------------------------------------------------------------------
