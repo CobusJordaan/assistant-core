@@ -51,26 +51,39 @@ class ForgeClient:
             logger.error("Failed to get models from Forge: %s", e)
         return []
 
+    async def get_raw_models(self) -> list[dict]:
+        """Get raw SD model list from Forge (for checkpoint dropdown)."""
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(f"{self.base_url}/sdapi/v1/sd-models")
+                if resp.status_code == 200:
+                    return resp.json()
+        except Exception as e:
+            logger.error("Failed to get models from Forge: %s", e)
+        return []
+
     async def txt2img(
         self,
         prompt: str,
         negative_prompt: str = "",
         width: int = 512,
-        height: int = 512,
-        steps: int = 20,
+        height: int = 640,
+        steps: int = 35,
         cfg_scale: float = 7,
-        sampler: str = "Euler a",
+        sampler_name: str = "DPM++ 2M SDE",
+        scheduler: str = "Karras",
         model: str = "",
         n: int = 1,
+        checkpoint: str = "",
+        enable_adetailer: bool = False,
+        adetailer_model: str = "face_yolov8n.pt",
+        adetailer_prompt: str = "",
+        adetailer_negative_prompt: str = "",
     ) -> list[dict]:
         """Generate images via Forge txt2img API.
 
         Returns list of dicts with b64_json and/or saved file path.
         """
-        # Optionally switch model
-        if model:
-            await self._set_model(model)
-
         payload = {
             "prompt": prompt,
             "negative_prompt": negative_prompt,
@@ -78,10 +91,35 @@ class ForgeClient:
             "height": height,
             "steps": steps,
             "cfg_scale": cfg_scale,
-            "sampler_name": sampler,
+            "sampler_name": sampler_name,
+            "scheduler": scheduler,
             "batch_size": min(n, 4),
             "n_iter": 1,
         }
+
+        # Set checkpoint via override_settings
+        effective_checkpoint = checkpoint or model
+        if effective_checkpoint:
+            payload["override_settings"] = {"sd_model_checkpoint": effective_checkpoint}
+            payload["override_settings_restore_afterwards"] = True
+
+        # ADetailer extension
+        if enable_adetailer:
+            ad_args = {"ad_model": adetailer_model}
+            if adetailer_prompt:
+                ad_args["ad_prompt"] = adetailer_prompt
+            if adetailer_negative_prompt:
+                ad_args["ad_negative_prompt"] = adetailer_negative_prompt
+            payload["alwayson_scripts"] = {"ADetailer": {"args": [ad_args]}}
+
+        # Log payload summary (no base64)
+        logger.info(
+            "Forge txt2img: prompt=%r, size=%dx%d, steps=%d, cfg=%.1f, "
+            "sampler=%s, scheduler=%s, checkpoint=%s, adetailer=%s",
+            prompt[:80], width, height, steps, cfg_scale,
+            sampler_name, scheduler, effective_checkpoint, enable_adetailer,
+        )
+        logger.info("Forge txt2img payload keys: %s", list(payload.keys()))
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(self.txt2img_url, json=payload)
@@ -98,20 +136,8 @@ class ForgeClient:
                 "revised_prompt": prompt,
             })
 
+        logger.info("Forge txt2img returned %d image(s)", len(results))
         return results
-
-    async def _set_model(self, model_name: str):
-        """Set the active SD model on Forge."""
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.post(
-                    f"{self.base_url}/sdapi/v1/options",
-                    json={"sd_model_checkpoint": model_name},
-                )
-                if resp.status_code == 200:
-                    logger.info("Switched Forge model to: %s", model_name)
-        except Exception as e:
-            logger.warning("Failed to switch model: %s", e)
 
     def _save_image(self, b64_data: str, prompt: str, index: int) -> str | None:
         """Save base64 image to output directory."""

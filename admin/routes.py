@@ -427,7 +427,10 @@ async def image_bridge_page(request: Request):
     if admin_db and admin_db.available:
         for key in ("forge_base_url", "image_bridge_port", "default_width",
                      "default_height", "default_steps", "default_cfg_scale",
-                     "default_sampler", "default_model", "output_dir"):
+                     "default_sampler_name", "default_scheduler", "default_model",
+                     "default_checkpoint", "default_negative_prompt", "output_dir",
+                     "enable_adetailer", "adetailer_model", "adetailer_prompt",
+                     "adetailer_negative_prompt"):
             s = admin_db.get_setting(key)
             if s:
                 settings[key] = s["value"]
@@ -486,9 +489,16 @@ async def api_image_bridge_settings(
     default_height: str = Form(""),
     default_steps: str = Form(""),
     default_cfg_scale: str = Form(""),
-    default_sampler: str = Form(""),
+    default_sampler_name: str = Form(""),
+    default_scheduler: str = Form(""),
     default_model: str = Form(""),
+    default_checkpoint: str = Form(""),
+    default_negative_prompt: str = Form(""),
     output_dir: str = Form(""),
+    enable_adetailer: str = Form("false"),
+    adetailer_model: str = Form(""),
+    adetailer_prompt: str = Form(""),
+    adetailer_negative_prompt: str = Form(""),
 ):
     session = _require_session(request)
     if not session:
@@ -509,12 +519,20 @@ async def api_image_bridge_settings(
         "default_height": ("int", default_height),
         "default_steps": ("int", default_steps),
         "default_cfg_scale": ("int", default_cfg_scale),
-        "default_sampler": ("string", default_sampler),
+        "default_sampler_name": ("string", default_sampler_name),
+        "default_scheduler": ("string", default_scheduler),
         "default_model": ("string", default_model),
+        "default_checkpoint": ("string", default_checkpoint),
+        "default_negative_prompt": ("string", default_negative_prompt),
         "output_dir": ("string", output_dir),
+        "enable_adetailer": ("bool", enable_adetailer),
+        "adetailer_model": ("string", adetailer_model),
+        "adetailer_prompt": ("string", adetailer_prompt),
+        "adetailer_negative_prompt": ("string", adetailer_negative_prompt),
     }
     for key, (vtype, value) in updates.items():
-        if value:
+        # Save even empty strings (to clear a field)
+        if value is not None:
             admin_db.set_setting(key, value, vtype, 0, user)
 
     _audit(request, session, "update_image_bridge_settings", result="SUCCESS")
@@ -602,6 +620,36 @@ async def api_image_bridge_test_forge(
     return {"success": connected, "forge_url": forge_url, "models_count": models_count}
 
 
+@router.get("/api/image-bridge/models")
+async def api_image_bridge_models(request: Request):
+    """Proxy Forge model list for checkpoint dropdown."""
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    admin_db = _get_admin_db(request)
+    forge_url = "http://127.0.0.1:7860"
+    if admin_db and admin_db.available:
+        s = admin_db.get_setting("forge_base_url")
+        if s:
+            forge_url = s["value"]
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"{forge_url.rstrip('/')}/sdapi/v1/sd-models")
+            if resp.status_code == 200:
+                models = resp.json()
+                return {"success": True, "models": [
+                    {"title": m.get("title", ""), "model_name": m.get("model_name", "")}
+                    for m in models
+                ]}
+    except Exception:
+        pass
+
+    return {"success": False, "models": []}
+
+
 @router.get("/api/image-bridge/health")
 async def api_image_bridge_health(request: Request):
     """Proxy health check to the image-bridge service (server-side)."""
@@ -635,6 +683,9 @@ async def api_image_bridge_health(request: Request):
 async def api_image_bridge_test_generate(
     request: Request,
     prompt: str = Form(...),
+    negative_prompt: str = Form(""),
+    width: str = Form(""),
+    height: str = Form(""),
     csrf_token: str = Form(...),
 ):
     """Test image generation by calling the image-bridge service."""
@@ -648,22 +699,32 @@ async def api_image_bridge_test_generate(
 
     admin_db = _get_admin_db(request)
     port = "5000"
-    api_key = None
+    w = width or "512"
+    h = height or "640"
     if admin_db and admin_db.available:
         p = admin_db.get_setting("image_bridge_port")
         if p:
             port = p["value"]
-        # Read raw hash+salt to reconstruct — but we can't get the raw key back.
-        # Instead, use internal localhost call without auth for admin test.
+        if not width:
+            ws = admin_db.get_setting("default_width")
+            if ws:
+                w = ws["value"]
+        if not height:
+            hs = admin_db.get_setting("default_height")
+            if hs:
+                h = hs["value"]
 
     bridge_url = f"http://127.0.0.1:{port}"
+    body = {"prompt": prompt, "n": 1, "size": f"{w}x{h}"}
+    if negative_prompt:
+        body["negative_prompt"] = negative_prompt
 
     try:
         import httpx
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
                 f"{bridge_url}/v1/images/generations",
-                json={"prompt": prompt, "n": 1, "size": "512x512"},
+                json=body,
                 headers={"X-Admin-Test": "true"},
             )
             if resp.status_code == 200:

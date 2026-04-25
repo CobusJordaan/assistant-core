@@ -206,6 +206,34 @@ class AdminDB:
     def _seed_missing_settings(self):
         """Insert any new default settings that don't already exist."""
         now = _now()
+
+        # Migrate default_sampler → default_sampler_name
+        old_sampler = self._conn.execute(
+            "SELECT value FROM app_settings WHERE key = 'default_sampler'"
+        ).fetchone()
+        new_sampler = self._conn.execute(
+            "SELECT 1 FROM app_settings WHERE key = 'default_sampler_name'"
+        ).fetchone()
+        if old_sampler and not new_sampler:
+            self._conn.execute(
+                """INSERT INTO app_settings (key, value, value_type, is_secret, updated_at, updated_by)
+                   VALUES ('default_sampler_name', ?, 'string', 0, ?, 'system')""",
+                (old_sampler[0], now),
+            )
+            self._conn.execute("DELETE FROM app_settings WHERE key = 'default_sampler'")
+            self._conn.commit()
+
+        # Update old defaults if they still have the original values
+        self._conn.execute(
+            "UPDATE app_settings SET value = '640', updated_at = ? WHERE key = 'default_height' AND value = '512'",
+            (now,),
+        )
+        self._conn.execute(
+            "UPDATE app_settings SET value = '35', updated_at = ? WHERE key = 'default_steps' AND value = '20'",
+            (now,),
+        )
+        self._conn.commit()
+
         extras = [
             ("image_bridge_enabled", "false", "bool", 0),
             ("image_bridge_host", "0.0.0.0", "string", 0),
@@ -214,12 +242,19 @@ class AdminDB:
             ("forge_txt2img_endpoint", "/sdapi/v1/txt2img", "string", 0),
             ("forge_img2img_endpoint", "/sdapi/v1/img2img", "string", 0),
             ("default_width", "512", "int", 0),
-            ("default_height", "512", "int", 0),
-            ("default_steps", "20", "int", 0),
+            ("default_height", "640", "int", 0),
+            ("default_steps", "35", "int", 0),
             ("default_cfg_scale", "7", "int", 0),
-            ("default_sampler", "Euler a", "string", 0),
+            ("default_sampler_name", "DPM++ 2M SDE", "string", 0),
             ("default_model", "", "string", 0),
             ("output_dir", "/opt/ai-assistant/data/image-bridge/output", "string", 0),
+            ("default_negative_prompt", "cartoon, anime, illustration, painting, drawing, 3d render, cgi, plastic skin, doll, oversaturated, low quality, blurry, deformed, bad anatomy, extra fingers, distorted face, unrealistic eyes", "string", 0),
+            ("default_scheduler", "Karras", "string", 0),
+            ("default_checkpoint", "juggernautXL_v9.safetensors", "string", 0),
+            ("enable_adetailer", "true", "bool", 0),
+            ("adetailer_model", "face_yolov8n.pt", "string", 0),
+            ("adetailer_prompt", "", "string", 0),
+            ("adetailer_negative_prompt", "", "string", 0),
         ]
         self._executemany_write(
             """INSERT OR IGNORE INTO app_settings (key, value, value_type, is_secret, updated_at, updated_by)

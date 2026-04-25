@@ -147,18 +147,25 @@ async def generate_image(
         height = _config.default_height
 
     model = req.model or _config.default_model
+    negative = req.negative_prompt or _config.default_negative_prompt
 
     try:
         results = await _forge.txt2img(
             prompt=req.prompt,
-            negative_prompt=req.negative_prompt,
+            negative_prompt=negative,
             width=width,
             height=height,
             steps=_config.default_steps,
             cfg_scale=_config.default_cfg_scale,
-            sampler=_config.default_sampler,
+            sampler_name=_config.default_sampler_name,
+            scheduler=_config.default_scheduler,
             model=model,
             n=req.n,
+            checkpoint=_config.default_checkpoint,
+            enable_adetailer=_config.enable_adetailer,
+            adetailer_model=_config.adetailer_model,
+            adetailer_prompt=_config.adetailer_prompt,
+            adetailer_negative_prompt=_config.adetailer_negative_prompt,
         )
     except Exception as e:
         logger.error("Image generation failed: %s", e)

@@ -88,6 +88,12 @@
                 <label class="form-label">Forge Base URL</label>
                 <input type="text" class="form-input" name="forge_base_url" value="{{ settings.get('forge_base_url', 'http://127.0.0.1:7860') }}">
             </div>
+            <div class="form-group">
+                <label class="form-label">Checkpoint</label>
+                <select class="form-input" name="default_checkpoint" id="cfg-checkpoint">
+                    <option value="{{ settings.get('default_checkpoint', '') }}">{{ settings.get('default_checkpoint', '') or 'Loading...' }}</option>
+                </select>
+            </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
                 <div class="form-group">
                     <label class="form-label">Width</label>
@@ -95,24 +101,55 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Height</label>
-                    <input type="number" class="form-input" name="default_height" value="{{ settings.get('default_height', '512') }}">
+                    <input type="number" class="form-input" name="default_height" value="{{ settings.get('default_height', '640') }}">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Steps</label>
-                    <input type="number" class="form-input" name="default_steps" value="{{ settings.get('default_steps', '20') }}">
+                    <input type="number" class="form-input" name="default_steps" value="{{ settings.get('default_steps', '35') }}">
                 </div>
                 <div class="form-group">
                     <label class="form-label">CFG Scale</label>
                     <input type="number" class="form-input" name="default_cfg_scale" value="{{ settings.get('default_cfg_scale', '7') }}">
                 </div>
+                <div class="form-group">
+                    <label class="form-label">Sampler</label>
+                    <input type="text" class="form-input" name="default_sampler_name" value="{{ settings.get('default_sampler_name', 'DPM++ 2M SDE') }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Scheduler</label>
+                    <input type="text" class="form-input" name="default_scheduler" value="{{ settings.get('default_scheduler', 'Karras') }}">
+                </div>
             </div>
             <div class="form-group">
-                <label class="form-label">Sampler</label>
-                <input type="text" class="form-input" name="default_sampler" value="{{ settings.get('default_sampler', 'Euler a') }}">
+                <label class="form-label">Default Negative Prompt</label>
+                <textarea class="form-input" name="default_negative_prompt" rows="3" style="resize:vertical; font-size:0.78rem;">{{ settings.get('default_negative_prompt', '') }}</textarea>
             </div>
-            <div class="form-group">
-                <label class="form-label">Default Model</label>
-                <input type="text" class="form-input" name="default_model" value="{{ settings.get('default_model', '') }}" placeholder="Leave empty for Forge default">
+
+            <!-- ADetailer -->
+            <div style="margin-top:8px; padding-top:10px; border-top:1px solid var(--border);">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                    <input type="checkbox" id="cfg-adetailer" name="enable_adetailer" value="true" {{ 'checked' if settings.get('enable_adetailer', 'true') == 'true' else '' }} onchange="this.form.querySelector('[name=enable_adetailer]').value = this.checked ? 'true' : 'false'">
+                    <label for="cfg-adetailer" class="form-label" style="margin:0; font-weight:600;">Enable ADetailer</label>
+                </div>
+                <div id="adetailer-fields" style="{{ '' if settings.get('enable_adetailer', 'true') == 'true' else 'display:none;' }}">
+                    <div class="form-group">
+                        <label class="form-label">ADetailer Model</label>
+                        <input type="text" class="form-input" name="adetailer_model" value="{{ settings.get('adetailer_model', 'face_yolov8n.pt') }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">ADetailer Prompt</label>
+                        <input type="text" class="form-input" name="adetailer_prompt" value="{{ settings.get('adetailer_prompt', '') }}" placeholder="Leave empty to use main prompt">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">ADetailer Negative Prompt</label>
+                        <input type="text" class="form-input" name="adetailer_negative_prompt" value="{{ settings.get('adetailer_negative_prompt', '') }}" placeholder="Leave empty to use main negative">
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-top:10px;">
+                <label class="form-label">Default Model (legacy)</label>
+                <input type="text" class="form-input" name="default_model" value="{{ settings.get('default_model', '') }}" placeholder="Leave empty — use Checkpoint above instead">
             </div>
             <div class="form-group">
                 <label class="form-label">Output Directory</label>
@@ -181,12 +218,56 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         </div>
         <h3>Test Generation</h3>
+        <button class="btn btn-ghost btn-sm" onclick="loadPreset()" style="margin-left:auto;" title="Fill with realistic portrait preset">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            Realistic Portrait Preset
+        </button>
     </div>
     <form id="test-gen-form" onsubmit="return testGenerate(event)">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="form-group">
             <label class="form-label">Prompt</label>
-            <input type="text" class="form-input" name="prompt" placeholder="A cute cat wearing a space helmet" value="">
+            <textarea class="form-input" name="prompt" rows="2" style="resize:vertical;" placeholder="A cute cat wearing a space helmet"></textarea>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Negative Prompt</label>
+            <textarea class="form-input" name="negative_prompt" rows="2" style="resize:vertical; font-size:0.78rem;" placeholder="Uses saved default if empty"></textarea>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px;">
+            <div class="form-group">
+                <label class="form-label">Width</label>
+                <input type="number" class="form-input" name="width" id="tg-width" value="{{ settings.get('default_width', '512') }}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Height</label>
+                <input type="number" class="form-input" name="height" id="tg-height" value="{{ settings.get('default_height', '640') }}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Steps</label>
+                <input type="number" class="form-input" name="steps" id="tg-steps" value="{{ settings.get('default_steps', '35') }}" disabled title="Uses saved config">
+            </div>
+            <div class="form-group">
+                <label class="form-label">CFG Scale</label>
+                <input type="number" class="form-input" name="cfg_scale" id="tg-cfg" value="{{ settings.get('default_cfg_scale', '7') }}" disabled title="Uses saved config">
+            </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+            <div class="form-group">
+                <label class="form-label">Sampler</label>
+                <input type="text" class="form-input" id="tg-sampler" value="{{ settings.get('default_sampler_name', 'DPM++ 2M SDE') }}" disabled title="Uses saved config">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Scheduler</label>
+                <input type="text" class="form-input" id="tg-scheduler" value="{{ settings.get('default_scheduler', 'Karras') }}" disabled title="Uses saved config">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Checkpoint</label>
+                <input type="text" class="form-input" id="tg-checkpoint" value="{{ settings.get('default_checkpoint', '') }}" disabled title="Uses saved config">
+            </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+            <input type="checkbox" id="tg-adetailer" {{ 'checked' if settings.get('enable_adetailer', 'true') == 'true' else '' }} disabled title="Uses saved config">
+            <label for="tg-adetailer" style="font-size:0.78rem; color:var(--muted); margin:0;">ADetailer enabled (from saved config)</label>
         </div>
         <button type="submit" class="btn btn-primary btn-sm" id="btn-test-gen">
             <span class="spinner spinner-hidden" id="test-gen-spinner"></span>
@@ -228,6 +309,44 @@
 
 {% block scripts %}
 const csrfToken = '{{ csrf_token }}';
+
+/* ---- ADetailer toggle ---- */
+document.getElementById('cfg-adetailer').addEventListener('change', function() {
+    document.getElementById('adetailer-fields').style.display = this.checked ? '' : 'none';
+});
+
+/* ---- Load checkpoints into dropdown ---- */
+async function loadCheckpoints() {
+    try {
+        const r = await fetch('/admin/api/image-bridge/models');
+        const data = await r.json();
+        if (data.success && data.models && data.models.length > 0) {
+            const sel = document.getElementById('cfg-checkpoint');
+            const current = sel.value;
+            sel.innerHTML = '<option value="">-- Forge default --</option>';
+            data.models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.title;
+                opt.textContent = m.title;
+                if (m.title === current) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+    } catch (e) {
+        console.error('Failed to load checkpoints:', e);
+    }
+}
+loadCheckpoints();
+
+/* ---- Realistic Portrait Preset ---- */
+function loadPreset() {
+    const form = document.getElementById('test-gen-form');
+    form.querySelector('[name="prompt"]').value = 'realistic professional portrait photo of a young boy, natural skin texture, soft natural light, 85mm lens, shallow depth of field, detailed face, realistic eyes, high quality photography';
+    form.querySelector('[name="negative_prompt"]').value = 'cartoon, anime, illustration, 3d render, cgi, doll, plastic skin, oversaturated, unrealistic eyes, blurry, low quality, deformed face, bad anatomy';
+    form.querySelector('[name="width"]').value = '512';
+    form.querySelector('[name="height"]').value = '640';
+    showIbAlert('Realistic portrait preset loaded', 'success');
+}
 
 async function doIbAction(event, url, extraData, form) {
     event.preventDefault();
@@ -375,6 +494,8 @@ async function testForge() {
                 forgeEl.textContent = 'Connected (' + data.models_count + ' models)';
             }
             showIbAlert('Forge connected successfully at ' + data.forge_url, 'success');
+            /* Refresh checkpoint dropdown on successful Forge connection */
+            loadCheckpoints();
         } else {
             forgeEl.textContent = 'Not reachable';
             forgeEl.style.color = 'var(--red)';
@@ -405,18 +526,43 @@ async function saveIbSettings(event) {
     const spinner = document.getElementById('save-spinner');
     const label = document.getElementById('save-label');
 
+    /* Ensure enable_adetailer checkbox value is set correctly */
+    const adCheck = document.getElementById('cfg-adetailer');
+    const hiddenAd = form.querySelector('input[type="hidden"][name="enable_adetailer"]');
+    if (!hiddenAd) {
+        /* Checkbox unchecked won't submit, so set the value */
+        adCheck.value = adCheck.checked ? 'true' : 'false';
+    }
+
     btn.disabled = true;
     spinner.classList.remove('spinner-hidden');
     label.textContent = 'Saving...';
 
+    const fd = new FormData(form);
+    /* Ensure enable_adetailer is always sent */
+    if (!fd.has('enable_adetailer')) {
+        fd.set('enable_adetailer', 'false');
+    } else {
+        fd.set('enable_adetailer', adCheck.checked ? 'true' : 'false');
+    }
+
     try {
         const r = await fetch('/admin/api/image-bridge/settings', {
             method: 'POST',
-            body: new FormData(form),
+            body: fd,
         });
         const data = await r.json();
         if (data.success) {
             showIbAlert('Settings saved', 'success');
+            /* Update test generation display fields to reflect saved values */
+            document.getElementById('tg-sampler').value = form.querySelector('[name="default_sampler_name"]').value;
+            document.getElementById('tg-scheduler').value = form.querySelector('[name="default_scheduler"]').value;
+            document.getElementById('tg-checkpoint').value = form.querySelector('[name="default_checkpoint"]').value;
+            document.getElementById('tg-steps').value = form.querySelector('[name="default_steps"]').value;
+            document.getElementById('tg-cfg').value = form.querySelector('[name="default_cfg_scale"]').value;
+            document.getElementById('tg-width').value = form.querySelector('[name="default_width"]').value;
+            document.getElementById('tg-height').value = form.querySelector('[name="default_height"]').value;
+            document.getElementById('tg-adetailer').checked = adCheck.checked;
         } else {
             showIbAlert(data.message || 'Save failed', 'error');
         }
@@ -485,7 +631,7 @@ async function testGenerate(event) {
     const label = document.getElementById('test-gen-label');
     const result = document.getElementById('test-gen-result');
 
-    const prompt = form.querySelector('input[name="prompt"]').value.trim();
+    const prompt = form.querySelector('[name="prompt"]').value.trim();
     if (!prompt) { showIbAlert('Enter a prompt first', 'error'); return false; }
 
     btn.disabled = true;

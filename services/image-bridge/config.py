@@ -5,6 +5,9 @@ import sqlite3
 from dataclasses import dataclass, field
 
 
+_bool_convert = lambda v: v.lower() in ("true", "1", "yes")
+
+
 @dataclass
 class ImageBridgeConfig:
     """Image bridge configuration loaded from admin.db."""
@@ -16,12 +19,21 @@ class ImageBridgeConfig:
     forge_txt2img_endpoint: str = "/sdapi/v1/txt2img"
     forge_img2img_endpoint: str = "/sdapi/v1/img2img"
     default_width: int = 512
-    default_height: int = 512
-    default_steps: int = 20
+    default_height: int = 640
+    default_steps: int = 35
     default_cfg_scale: int = 7
-    default_sampler: str = "Euler a"
+    default_sampler_name: str = "DPM++ 2M SDE"
+    default_scheduler: str = "Karras"
     default_model: str = ""
+    default_checkpoint: str = "juggernautXL_v9.safetensors"
+    default_negative_prompt: str = ""
     output_dir: str = "/opt/ai-assistant/data/image-bridge/output"
+
+    # ADetailer
+    enable_adetailer: bool = True
+    adetailer_model: str = "face_yolov8n.pt"
+    adetailer_prompt: str = ""
+    adetailer_negative_prompt: str = ""
 
     # Auth (loaded separately)
     api_key_hash: str = ""
@@ -29,7 +41,7 @@ class ImageBridgeConfig:
 
 
 _SETTING_MAP = {
-    "image_bridge_enabled": ("enabled", lambda v: v.lower() in ("true", "1", "yes")),
+    "image_bridge_enabled": ("enabled", _bool_convert),
     "image_bridge_host": ("host", str),
     "image_bridge_port": ("port", int),
     "forge_base_url": ("forge_base_url", str),
@@ -39,9 +51,16 @@ _SETTING_MAP = {
     "default_height": ("default_height", int),
     "default_steps": ("default_steps", int),
     "default_cfg_scale": ("default_cfg_scale", int),
-    "default_sampler": ("default_sampler", str),
+    "default_sampler_name": ("default_sampler_name", str),
+    "default_scheduler": ("default_scheduler", str),
     "default_model": ("default_model", str),
+    "default_checkpoint": ("default_checkpoint", str),
+    "default_negative_prompt": ("default_negative_prompt", str),
     "output_dir": ("output_dir", str),
+    "enable_adetailer": ("enable_adetailer", _bool_convert),
+    "adetailer_model": ("adetailer_model", str),
+    "adetailer_prompt": ("adetailer_prompt", str),
+    "adetailer_negative_prompt": ("adetailer_negative_prompt", str),
     "image_bridge_api_key_hash": ("api_key_hash", str),
     "image_bridge_api_key_salt": ("api_key_salt", str),
 }
