@@ -4,10 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=ai-assistant
-Group=ai-assistant
-WorkingDirectory=/opt/ai-assistant/assistant-core/services/text-to-speech
-ExecStart=/opt/ai-assistant/venv/bin/uvicorn app:app --host 0.0.0.0 --port 5400
+User=aicrm
+WorkingDirectory=/opt/ai-assistant/services/text-to-speech
+ExecStart=/opt/ai-assistant/services/text-to-speech/venv/bin/uvicorn app:app --host 0.0.0.0 --port 5400
 Restart=always
 RestartSec=5
 Environment=PIPER_DIR=/opt/piper
