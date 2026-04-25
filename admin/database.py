@@ -256,6 +256,19 @@ class AdminDB:
             ("adetailer_model", "face_yolov8n.pt", "string", 0),
             ("adetailer_prompt", "", "string", 0),
             ("adetailer_negative_prompt", "", "string", 0),
+            # AI Router settings
+            ("ai_router_enabled", "true", "bool", 0),
+            ("ai_router_port", "5100", "string", 0),
+            ("ai_router_ollama_url", "http://localhost:11434", "string", 0),
+            ("ai_router_image_bridge_url", "http://127.0.0.1:5000", "string", 0),
+            ("ai_router_image_bridge_api_key", "", "string", 1),
+            ("ai_router_model_general", "qwen2.5:14b", "string", 0),
+            ("ai_router_model_code", "qwen2.5-coder:14b", "string", 0),
+            ("ai_router_model_vision", "qwen2.5vl:7b", "string", 0),
+            ("ai_router_display_name", "Draadloze AI", "string", 0),
+            ("ai_router_display_id", "draadloze-ai", "string", 0),
+            ("ai_router_api_key_hash", "", "string", 1),
+            ("ai_router_api_key_salt", "", "string", 1),
         ]
         self._executemany_write(
             """INSERT OR IGNORE INTO app_settings (key, value, value_type, is_secret, updated_at, updated_by)

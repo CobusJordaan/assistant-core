@@ -1,0 +1,355 @@
+{% extends "admin/base.html" %}
+{% block title %}AI Router{% endblock %}
+{% block page_title %}AI Router{% endblock %}
+{% block page_subtitle %}Draadloze AI — intelligent model router for Open WebUI{% endblock %}
+
+{% block content %}
+<div class="card-grid" style="grid-template-columns: repeat(2, 1fr);">
+
+    <!-- Service Status -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-purple">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-7.07-15.07l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
+            </div>
+            <h3>Service Status</h3>
+            {% if service.active %}
+            <span class="card-badge badge-green">Running</span>
+            {% else %}
+            <span class="card-badge badge-red">Stopped</span>
+            {% endif %}
+        </div>
+        <div id="ar-status">
+            <div class="stat">
+                <label>Status</label>
+                <span class="val">
+                    <span class="svc-dot {{ 'svc-dot-green' if service.active else 'svc-dot-red' }}" style="display:inline-block;vertical-align:middle;margin-right:6px;"></span>
+                    {{ service.status_text or 'unknown' }}
+                </span>
+            </div>
+            <div class="stat"><label>Port</label><span class="val">{{ router_port }}</span></div>
+            <div class="stat">
+                <label>Ollama Connection</label>
+                <span class="val" id="ollama-status" style="color:var(--muted)">Not checked</span>
+            </div>
+            <div class="stat">
+                <label>API Key</label>
+                <span class="val" style="{{ 'color:var(--green)' if key_prefix else 'color:var(--orange)' }}">
+                    {{ key_prefix + '...' if key_prefix else 'Not configured' }}
+                </span>
+            </div>
+        </div>
+
+        <!-- Open WebUI Connection Info -->
+        <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+            <div class="stat">
+                <label>Open WebUI Connection URL</label>
+                <span class="val connection-url" onclick="copyUrl(this)" title="Click to copy">http://{{ settings.get('ai_router_ollama_url', '172.18.2.195').split('//')[1].split(':')[0] if '://' in settings.get('ai_router_ollama_url', '172.18.2.195') else '172.18.2.195' }}:{{ router_port }}/v1</span>
+            </div>
+            <div style="font-size:0.75rem; color:var(--muted); margin-top:4px;">Type: OpenAI &nbsp;|&nbsp; Auth: Bearer API_KEY &nbsp;|&nbsp; Model: draadloze-ai</div>
+        </div>
+
+        <div class="card-actions" style="margin-top:12px;">
+            <form method="POST" action="/admin/api/services/restart/ai-router" style="display:inline" onsubmit="return confirmRestart(this)">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-warning btn-sm">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span class="btn-label">Restart</span>
+                </button>
+            </form>
+            <button class="btn btn-ghost btn-sm" onclick="checkArHealth()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                <span id="health-label">Check Health</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Configuration -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </div>
+            <h3>Configuration</h3>
+        </div>
+        <form id="ar-settings-form" onsubmit="return saveArSettings(event)">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+            <div class="stat">
+                <label>Display Name</label>
+                <input type="text" class="form-input" name="ai_router_display_name" value="{{ settings.get('ai_router_display_name', 'Draadloze AI') }}">
+            </div>
+            <div class="stat">
+                <label>Display Model ID</label>
+                <input type="text" class="form-input" name="ai_router_display_id" value="{{ settings.get('ai_router_display_id', 'draadloze-ai') }}">
+            </div>
+
+            <div style="margin-top:12px; padding-top:10px; border-top:1px solid var(--border);">
+                <div style="font-size:0.8rem; font-weight:600; color:var(--text); margin-bottom:8px;">Model Routing</div>
+            </div>
+            <div class="stat">
+                <label>General Chat Model</label>
+                <input type="text" class="form-input" name="ai_router_model_general" value="{{ settings.get('ai_router_model_general', 'qwen2.5:14b') }}">
+            </div>
+            <div class="stat">
+                <label>Code Model</label>
+                <input type="text" class="form-input" name="ai_router_model_code" value="{{ settings.get('ai_router_model_code', 'qwen2.5-coder:14b') }}">
+            </div>
+            <div class="stat">
+                <label>Vision Model</label>
+                <input type="text" class="form-input" name="ai_router_model_vision" value="{{ settings.get('ai_router_model_vision', 'qwen2.5vl:7b') }}">
+            </div>
+
+            <div style="margin-top:12px; padding-top:10px; border-top:1px solid var(--border);">
+                <div style="font-size:0.8rem; font-weight:600; color:var(--text); margin-bottom:8px;">Connection Settings</div>
+            </div>
+            <div class="stat">
+                <label>Ollama URL</label>
+                <input type="text" class="form-input" name="ai_router_ollama_url" value="{{ settings.get('ai_router_ollama_url', 'http://localhost:11434') }}">
+            </div>
+            <div class="stat">
+                <label>Image Bridge URL</label>
+                <input type="text" class="form-input" name="ai_router_image_bridge_url" value="{{ settings.get('ai_router_image_bridge_url', 'http://127.0.0.1:5000') }}">
+            </div>
+            <div class="stat">
+                <label>Image Bridge API Key</label>
+                <input type="text" class="form-input" name="ai_router_image_bridge_api_key" value="{{ settings.get('ai_router_image_bridge_api_key', '') }}" placeholder="imgbr_...">
+            </div>
+            <div class="stat">
+                <label>Router Port</label>
+                <input type="text" class="form-input" name="ai_router_port" value="{{ settings.get('ai_router_port', '5100') }}">
+            </div>
+
+            <div class="card-actions" style="margin-top:12px;">
+                <button type="submit" class="btn btn-primary btn-sm" id="ar-save-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    <span class="btn-label">Save Settings</span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- API Key -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-green">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+            </div>
+            <h3>API Key</h3>
+        </div>
+        <p style="font-size:0.8rem; color:var(--muted); margin-bottom:12px;">
+            Generate an API key for Open WebUI to authenticate with the AI Router.
+        </p>
+        <div class="stat">
+            <label>Current Key</label>
+            <span class="val" id="ar-key-display" style="{{ 'color:var(--green)' if key_prefix else 'color:var(--orange)' }}">
+                {{ key_prefix + '...' if key_prefix else 'Not configured' }}
+            </span>
+        </div>
+        <div id="ar-new-key" style="display:none; margin:10px 0; padding:10px; background:var(--bg-darker); border-radius:6px; word-break:break-all; font-family:monospace; font-size:0.8rem;"></div>
+        <div class="card-actions" style="margin-top:10px;">
+            <button class="btn btn-primary btn-sm" onclick="generateArKey()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                Generate New Key
+            </button>
+        </div>
+    </div>
+
+    <!-- Test Router -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-orange">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </div>
+            <h3>Test Router</h3>
+        </div>
+        <p style="font-size:0.8rem; color:var(--muted); margin-bottom:12px;">
+            Type a message to see which model would be selected.
+        </p>
+        <div class="stat">
+            <label>Test Message</label>
+            <input type="text" class="form-input" id="test-message" placeholder="e.g. write a python function, draw me a cat, what is the weather...">
+        </div>
+        <div class="card-actions" style="margin-top:8px;">
+            <button class="btn btn-primary btn-sm" onclick="testRouter()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                <span id="test-label">Test Intent</span>
+            </button>
+        </div>
+        <div id="test-result" style="display:none; margin-top:12px; padding:10px; background:var(--bg-darker); border-radius:6px;">
+            <div class="stat">
+                <label>Detected Intent</label>
+                <span class="val" id="test-intent" style="font-weight:600;"></span>
+            </div>
+            <div class="stat">
+                <label>Selected Model</label>
+                <span class="val" id="test-model" style="font-family:monospace;"></span>
+            </div>
+        </div>
+
+        <!-- Routing Rules Reference -->
+        <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+            <div style="font-size:0.75rem; font-weight:600; color:var(--text); margin-bottom:6px;">Routing Rules</div>
+            <div style="font-size:0.7rem; color:var(--muted); line-height:1.6;">
+                <div><span style="color:var(--blue);">vision</span> — Image attachments detected</div>
+                <div><span style="color:var(--purple);">image_gen</span> — create/generate/draw + image/picture/photo</div>
+                <div><span style="color:var(--green);">code</span> — code/program/script/error/debug/python/etc.</div>
+                <div><span style="color:var(--text);">general</span> — Everything else</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Setup Instructions (full width) -->
+    <div class="card" style="grid-column: 1 / -1;">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            </div>
+            <h3>Open WebUI Setup</h3>
+        </div>
+        <div style="font-size:0.8rem; line-height:1.8; color:var(--muted);">
+            <p style="margin-bottom:8px;">To connect Open WebUI to Draadloze AI:</p>
+            <ol style="padding-left:20px; margin:0;">
+                <li>Go to Open WebUI <strong>Admin Settings</strong> &rarr; <strong>Connections</strong></li>
+                <li>Add a new <strong>OpenAI</strong> connection</li>
+                <li>Set the <strong>URL</strong> to: <code style="background:var(--bg-darker); padding:2px 6px; border-radius:3px;">http://172.18.2.195:{{ router_port }}/v1</code></li>
+                <li>Set the <strong>API Key</strong> to the generated key above (airt_...)</li>
+                <li>Save and verify — you should see <strong>draadloze-ai</strong> in the model list</li>
+                <li>For non-admin users: set <strong>draadloze-ai</strong> as the default model and hide other models in user permissions</li>
+            </ol>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyUrl(el) {
+    navigator.clipboard.writeText(el.textContent.trim());
+    const orig = el.textContent;
+    el.textContent = 'Copied!';
+    setTimeout(() => el.textContent = orig, 1500);
+}
+
+function confirmRestart(form) {
+    return confirm('Restart AI Router service?');
+}
+
+async function checkArHealth() {
+    const label = document.getElementById('health-label');
+    const ollamaEl = document.getElementById('ollama-status');
+    label.textContent = 'Checking...';
+    try {
+        const r = await fetch('/admin/api/ai-router/health');
+        const data = await r.json();
+        if (data.status === 'ok') {
+            label.textContent = 'Healthy';
+            label.style.color = 'var(--green)';
+            ollamaEl.textContent = data.ollama_connected ? 'Connected' : 'Not connected';
+            ollamaEl.style.color = data.ollama_connected ? 'var(--green)' : 'var(--red)';
+        } else {
+            label.textContent = 'Unreachable';
+            label.style.color = 'var(--red)';
+            ollamaEl.textContent = data.error || 'Unreachable';
+            ollamaEl.style.color = 'var(--red)';
+        }
+    } catch (e) {
+        label.textContent = 'Error';
+        label.style.color = 'var(--red)';
+        ollamaEl.textContent = 'Error: ' + e.message;
+        ollamaEl.style.color = 'var(--red)';
+    }
+    setTimeout(() => { label.textContent = 'Check Health'; label.style.color = ''; }, 5000);
+}
+
+async function saveArSettings(e) {
+    e.preventDefault();
+    const form = document.getElementById('ar-settings-form');
+    const btn = document.getElementById('ar-save-btn');
+    const label = btn.querySelector('.btn-label');
+    label.textContent = 'Saving...';
+
+    try {
+        const fd = new FormData(form);
+        const r = await fetch('/admin/api/ai-router/settings', { method: 'POST', body: fd });
+        if (!r.ok) {
+            label.textContent = 'Error ' + r.status;
+            label.style.color = 'var(--red)';
+            return false;
+        }
+        const data = await r.json();
+        if (data.success) {
+            label.textContent = 'Saved!';
+            label.style.color = 'var(--green)';
+        } else {
+            label.textContent = 'Failed';
+            label.style.color = 'var(--red)';
+        }
+    } catch (e) {
+        label.textContent = 'Error';
+        label.style.color = 'var(--red)';
+    }
+    setTimeout(() => { label.textContent = 'Save Settings'; label.style.color = ''; }, 3000);
+    return false;
+}
+
+async function generateArKey() {
+    if (!confirm('Generate a new API key? The old key will stop working.')) return;
+
+    const fd = new FormData();
+    fd.append('csrf_token', '{{ csrf_token }}');
+
+    try {
+        const r = await fetch('/admin/api/ai-router/generate-key', { method: 'POST', body: fd });
+        const data = await r.json();
+        if (data.success) {
+            const keyDiv = document.getElementById('ar-new-key');
+            keyDiv.style.display = 'block';
+            keyDiv.innerHTML = '<strong>New API Key (copy now, shown once):</strong><br>' + data.raw_key;
+            document.getElementById('ar-key-display').textContent = data.prefix + '...';
+            document.getElementById('ar-key-display').style.color = 'var(--green)';
+        } else {
+            alert('Failed: ' + (data.message || 'Unknown error'));
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+async function testRouter() {
+    const msg = document.getElementById('test-message').value.trim();
+    if (!msg) { alert('Enter a test message'); return; }
+
+    const label = document.getElementById('test-label');
+    label.textContent = 'Testing...';
+
+    const fd = new FormData();
+    fd.append('csrf_token', '{{ csrf_token }}');
+    fd.append('message', msg);
+
+    try {
+        const r = await fetch('/admin/api/ai-router/test', { method: 'POST', body: fd });
+        const data = await r.json();
+        if (data.success) {
+            document.getElementById('test-result').style.display = 'block';
+            const intentEl = document.getElementById('test-intent');
+            intentEl.textContent = data.intent;
+            const colors = { general: 'var(--text)', code: 'var(--green)', vision: 'var(--blue)', image_gen: 'var(--purple)' };
+            intentEl.style.color = colors[data.intent] || 'var(--text)';
+            document.getElementById('test-model').textContent = data.model;
+        } else {
+            alert('Test failed: ' + (data.message || 'Unknown error'));
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+    label.textContent = 'Test Intent';
+}
+
+// Auto-check health on page load
+document.addEventListener('DOMContentLoaded', () => {
+    checkArHealth();
+});
+</script>
+{% endblock %}

@@ -752,6 +752,212 @@ async def api_image_bridge_test_generate(
 
 
 # ---------------------------------------------------------------------------
+# AI Router page
+# ---------------------------------------------------------------------------
+
+_ar_log = logging.getLogger("admin.routes.ai-router")
+
+
+@router.get("/ai-router", response_class=HTMLResponse)
+async def ai_router_page(request: Request):
+    session = _require_session(request)
+    if not session:
+        return RedirectResponse("/admin/login", status_code=302)
+
+    svc_status = get_service_status("ai-router")
+
+    admin_db = _get_admin_db(request)
+    settings = {}
+    key_prefix = None
+    if admin_db and admin_db.available:
+        for key in ("ai_router_port", "ai_router_ollama_url",
+                     "ai_router_image_bridge_url", "ai_router_image_bridge_api_key",
+                     "ai_router_model_general", "ai_router_model_code",
+                     "ai_router_model_vision", "ai_router_display_name",
+                     "ai_router_display_id"):
+            s = admin_db.get_setting(key)
+            if s:
+                settings[key] = s["value"]
+        pfx = admin_db.get_setting("ai_router_api_key_prefix")
+        if pfx and pfx["value"]:
+            key_prefix = pfx["value"]
+
+    return templates.TemplateResponse(request, "admin/ai-router.html", {
+        "active_page": "ai-router",
+        "service": svc_status,
+        "settings": settings,
+        "key_prefix": key_prefix,
+        "router_port": settings.get("ai_router_port", "5100"),
+        "csrf_token": session.get("csrf", ""),
+    })
+
+
+@router.post("/api/ai-router/settings")
+async def api_ai_router_settings(
+    request: Request,
+    csrf_token: str = Form(...),
+    ai_router_port: str = Form(""),
+    ai_router_ollama_url: str = Form(""),
+    ai_router_image_bridge_url: str = Form(""),
+    ai_router_image_bridge_api_key: str = Form(""),
+    ai_router_model_general: str = Form(""),
+    ai_router_model_code: str = Form(""),
+    ai_router_model_vision: str = Form(""),
+    ai_router_display_name: str = Form(""),
+    ai_router_display_id: str = Form(""),
+):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    admin_db = _get_admin_db(request)
+    if not admin_db or not admin_db.available:
+        return JSONResponse(status_code=500, content={"success": False, "message": "Database not available"})
+
+    user = session.get("user", "admin")
+    updates = {
+        "ai_router_port": ("string", ai_router_port),
+        "ai_router_ollama_url": ("string", ai_router_ollama_url),
+        "ai_router_image_bridge_url": ("string", ai_router_image_bridge_url),
+        "ai_router_image_bridge_api_key": ("string", ai_router_image_bridge_api_key),
+        "ai_router_model_general": ("string", ai_router_model_general),
+        "ai_router_model_code": ("string", ai_router_model_code),
+        "ai_router_model_vision": ("string", ai_router_model_vision),
+        "ai_router_display_name": ("string", ai_router_display_name),
+        "ai_router_display_id": ("string", ai_router_display_id),
+    }
+
+    saved_count = 0
+    for key, (vtype, value) in updates.items():
+        if value is not None:
+            is_secret = 1 if "api_key" in key and "prefix" not in key else 0
+            admin_db.set_setting(key, value, vtype, is_secret, user)
+            saved_count += 1
+
+    _ar_log.info("Saved %d AI Router settings", saved_count)
+    _audit(request, session, "save_ai_router_settings", result="SUCCESS")
+    return {"success": True, "saved": saved_count}
+
+
+@router.post("/api/ai-router/generate-key")
+async def api_ai_router_generate_key(
+    request: Request,
+    csrf_token: str = Form(...),
+):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    if not _require_owner(session) and session.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"success": False, "message": "Admin role required"})
+
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    admin_db = _get_admin_db(request)
+    if not admin_db or not admin_db.available:
+        return JSONResponse(status_code=500, content={"success": False, "message": "Database not available"})
+
+    import hashlib
+    import secrets
+
+    raw_key = "airt_" + secrets.token_hex(32)
+    salt = secrets.token_hex(16)
+    key_hash = hashlib.sha256((salt + raw_key).encode()).hexdigest()
+    prefix = raw_key[:8]
+    user = session.get("user", "admin")
+
+    admin_db.set_setting("ai_router_api_key_hash", key_hash, "string", 1, user)
+    admin_db.set_setting("ai_router_api_key_salt", salt, "string", 1, user)
+    admin_db.set_setting("ai_router_api_key_prefix", prefix, "string", 0, user)
+
+    _audit(request, session, "generate_ai_router_key", result="SUCCESS")
+
+    return {"success": True, "raw_key": raw_key, "prefix": prefix}
+
+
+@router.get("/api/ai-router/health")
+async def api_ai_router_health(request: Request):
+    """Proxy health check to AI Router service."""
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    admin_db = _get_admin_db(request)
+    port = "5100"
+    if admin_db and admin_db.available:
+        p = admin_db.get_setting("ai_router_port")
+        if p:
+            port = p["value"]
+
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(f"http://127.0.0.1:{port}/health")
+            return resp.json()
+    except Exception as e:
+        return {"status": "unreachable", "error": str(e)}
+
+
+@router.post("/api/ai-router/test")
+async def api_ai_router_test(
+    request: Request,
+    csrf_token: str = Form(...),
+    message: str = Form(""),
+):
+    """Test intent detection — returns detected intent and selected model."""
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    if not message.strip():
+        return {"success": False, "message": "No message provided"}
+
+    # Import intent detection inline to avoid service dependency
+    import sys
+    import importlib
+    intent_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "services", "ai-router")
+    if intent_path not in sys.path:
+        sys.path.insert(0, intent_path)
+    try:
+        intent_mod = importlib.import_module("intent")
+        intent = intent_mod.detect_intent(message.strip())
+    except Exception as e:
+        return {"success": False, "message": f"Intent detection error: {e}"}
+
+    admin_db = _get_admin_db(request)
+    model_map = {
+        "general": "qwen2.5:14b",
+        "code": "qwen2.5-coder:14b",
+        "vision": "qwen2.5vl:7b",
+        "image_gen": "Image Bridge (Forge)",
+    }
+    if admin_db and admin_db.available:
+        for intent_key, db_key in [("general", "ai_router_model_general"),
+                                     ("code", "ai_router_model_code"),
+                                     ("vision", "ai_router_model_vision")]:
+            s = admin_db.get_setting(db_key)
+            if s and s["value"]:
+                model_map[intent_key] = s["value"]
+
+    return {
+        "success": True,
+        "intent": intent,
+        "model": model_map.get(intent, "unknown"),
+        "message": message.strip()[:100],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Users page
 # ---------------------------------------------------------------------------
 

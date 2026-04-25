@@ -6,7 +6,7 @@ from admin.security import run_command, log_admin_action
 
 logger = logging.getLogger("admin.services")
 
-ALLOWED_SERVICES = frozenset({"assistant-core", "ollama", "image-bridge"})
+ALLOWED_SERVICES = frozenset({"assistant-core", "ollama", "image-bridge", "ai-router"})
 ALLOWED_CONTAINERS = frozenset({"open-webui"})
 
 # Detect systemctl path (varies by distro)

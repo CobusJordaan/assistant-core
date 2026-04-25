@@ -1,0 +1,15 @@
+[Unit]
+Description=AI Router - Draadloze AI intelligent model router
+After=network.target ollama.service
+
+[Service]
+Type=simple
+User=aicrm
+WorkingDirectory=/opt/ai-assistant/services/ai-router
+ExecStart=/opt/ai-assistant/services/ai-router/venv/bin/uvicorn app:app --host 0.0.0.0 --port 5100
+Restart=always
+RestartSec=5
+EnvironmentFile=/etc/ai-router.env
+
+[Install]
+WantedBy=multi-user.target
