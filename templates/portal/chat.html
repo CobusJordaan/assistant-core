@@ -4,8 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#0a0a0f">
     <title>Draadloze AI</title>
+    <link rel="manifest" href="/static/portal/manifest.json">
+    <link rel="apple-touch-icon" href="/static/portal/icon-192.png">
     <link rel="stylesheet" href="/static/portal/portal.css">
 </head>
 <body>
@@ -82,5 +85,10 @@
     const visionAllowed = {{ vision_allowed | tojson }};
     </script>
     <script src="/static/portal/chat.js"></script>
+    <script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/static/portal/sw.js', { scope: '/portal' });
+    }
+    </script>
 </body>
 </html>

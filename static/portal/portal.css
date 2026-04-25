@@ -494,6 +494,14 @@ body {
     margin: 8px 0;
 }
 
+/* Standalone PWA — safe area insets */
+@supports (padding-top: env(safe-area-inset-top)) {
+    .chat-sidebar { padding-top: env(safe-area-inset-top); }
+    .sidebar-toggle { top: calc(12px + env(safe-area-inset-top)); }
+    .chat-messages { padding-top: calc(20px + env(safe-area-inset-top)); }
+    .login-page { padding-top: env(safe-area-inset-top); }
+}
+
 /* Mobile sidebar toggle */
 .sidebar-toggle {
     display: none;
@@ -536,7 +544,7 @@ body {
     .sidebar-overlay.visible { display: block; }
 
     /* Messages area — leave room for hamburger at top */
-    .chat-messages { padding: 52px 10px 10px; }
+    .chat-messages { padding: calc(52px + env(safe-area-inset-top, 0px)) 10px 10px; }
 
     /* Input area — safe area for phones with home indicator */
     .chat-input-area {
