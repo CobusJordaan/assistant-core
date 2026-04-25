@@ -317,7 +317,8 @@ async function checkIbHealth() {
         const r = await fetch('/admin/api/image-bridge/health');
         if (r.status === 401) { window.location.href = '/admin/login'; return; }
         const data = await r.json();
-        if (data.status === 'ok') {
+        const isOk = data.status === 'ok' || (r.ok && data.status !== 'unreachable' && data.status !== 'error');
+        if (isOk) {
             label.textContent = 'Healthy';
             label.style.color = 'var(--green)';
             if (data.forge_connected) {
@@ -325,7 +326,7 @@ async function checkIbHealth() {
                 forgeEl.textContent = 'Connected';
                 forgeEl.style.color = 'var(--green)';
             }
-            showIbAlert('Image Bridge is healthy', 'success');
+            showIbAlert('Image Bridge is healthy' + (data.status ? ' (status: ' + data.status + ')' : ''), 'success');
         } else if (data.status === 'unreachable') {
             label.textContent = 'Not Reachable';
             label.style.color = 'var(--red)';
@@ -333,6 +334,7 @@ async function checkIbHealth() {
         } else {
             label.textContent = 'Unhealthy';
             label.style.color = 'var(--orange)';
+            showIbAlert('Image Bridge returned: ' + JSON.stringify(data), 'error');
         }
     } catch (e) {
         label.textContent = 'Error';

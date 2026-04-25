@@ -621,7 +621,11 @@ async def api_image_bridge_health(request: Request):
         async with httpx.AsyncClient(timeout=5) as client:
             resp = await client.get(f"http://127.0.0.1:{port}/health")
             if resp.status_code == 200:
-                return resp.json()
+                data = resp.json()
+                # Normalize: ensure status field is present
+                if "status" not in data:
+                    data["status"] = "ok"
+                return data
             return {"status": "error", "code": resp.status_code}
     except Exception:
         return {"status": "unreachable"}
