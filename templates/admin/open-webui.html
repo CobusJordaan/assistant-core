@@ -71,8 +71,13 @@
         </div>
         <div id="update-status-content">
             <div class="stat"><label>Update Status</label><span class="val" style="color:var(--muted)" id="update-check-text">Not checked</span></div>
-            <div class="stat"><label>Docker Compose</label><span class="val">{{ 'Available' if compose_available else 'Not found' }}</span></div>
+            <div class="stat"><label>Docker Compose</label><span class="val" style="{{ 'color:var(--green)' if compose_available else 'color:var(--orange)' }}">{{ 'Available' if compose_available else 'Not found' }}</span></div>
         </div>
+        {% if not compose_available %}
+        <div style="margin-top:12px; padding:10px 14px; background:var(--orange-dim); border:1px solid rgba(245,158,11,0.15); border-radius:8px; font-size:0.82rem; color:var(--orange); line-height:1.5;">
+            Automatic updates require Docker Compose. Create a compose file at <code style="font-size:0.78rem;">{{ compose_file_path }}</code> to enable one-click updates.
+        </div>
+        {% endif %}
         <div style="margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap;">
             <button class="btn btn-ghost btn-sm" id="btn-check-update" onclick="checkOwuiUpdate()">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -83,10 +88,12 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 <span id="backup-label">Backup Data</span>
             </button>
+            {% if compose_available %}
             <button class="btn btn-primary btn-sm" id="btn-update-owui" onclick="updateOwui()" style="display:none">
                 <span class="spinner spinner-hidden" id="update-owui-spinner"></span>
                 <span id="update-owui-label">Update Open WebUI</span>
             </button>
+            {% endif %}
             {% endif %}
         </div>
 
@@ -103,6 +110,7 @@
     </div>
 </div>
 
+{% if compose_available %}
 <!-- Update progress (shown during update) -->
 <div class="card" id="update-progress-card" style="display:none; margin-top:20px;">
     <div class="card-header">
@@ -113,6 +121,7 @@
     </div>
     <div id="update-progress-content" style="font-size:0.85rem; color:var(--text-secondary);"></div>
 </div>
+{% endif %}
 
 <!-- Alert area -->
 <div id="owui-alert" style="margin-top: 20px;"></div>
@@ -416,6 +425,7 @@ async function backupOwui() {
     }
 }
 
+{% if compose_available %}
 async function updateOwui() {
     if (!confirm('This will update and restart Open WebUI. Users may be disconnected. Continue?')) return;
 
@@ -454,18 +464,20 @@ async function updateOwui() {
                 html += `<div style="padding:6px 0; display:flex; align-items:center; gap:10px;">${icon} <span>${stepNames[s.step] || s.step}</span>${s.error ? `<span style="color:var(--red);font-size:0.78rem;margin-left:8px;">${s.error}</span>` : ''}</div>`;
             }
             progressContent.innerHTML = html;
+        } else {
+            progressCard.style.display = 'none';
         }
 
         if (data.success) {
             showOwuiAlert('Open WebUI updated successfully!', 'success');
             label.textContent = 'Updated!';
-            /* Refresh status */
             setTimeout(refreshOwuiStatus, 3000);
         } else {
             showOwuiAlert(data.message || 'Update failed', 'error');
             label.textContent = 'Update Failed';
         }
     } catch (e) {
+        progressCard.style.display = 'none';
         showOwuiAlert('Update error: ' + e.message, 'error');
         label.textContent = 'Update Failed';
     } finally {
@@ -476,6 +488,7 @@ async function updateOwui() {
         }, 5000);
     }
 }
+{% endif %}
 
 function showOwuiAlert(msg, type) {
     const el = document.getElementById('owui-alert');

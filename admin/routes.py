@@ -255,7 +255,7 @@ async def open_webui_page(request: Request):
     port = detail.get("host_port") or OPEN_WEBUI_PORT
     webui_url = f"http://{OPEN_WEBUI_HOST}:{port}"
 
-    from admin.docker_manager import get_open_webui_version, has_compose_file
+    from admin.docker_manager import get_open_webui_version, has_compose_file, COMPOSE_FILE
     owui_version = get_open_webui_version()
 
     return templates.TemplateResponse(request, "admin/open-webui.html", {
@@ -264,6 +264,7 @@ async def open_webui_page(request: Request):
         "webui_url": webui_url,
         "owui_version": owui_version,
         "compose_available": has_compose_file(),
+        "compose_file_path": COMPOSE_FILE,
         "session_role": session.get("role", "admin"),
         "csrf_token": session.get("csrf", ""),
     })
