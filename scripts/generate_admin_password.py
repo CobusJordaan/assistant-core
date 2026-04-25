@@ -8,7 +8,7 @@ Paste the output into your .env file as ADMIN_PASSWORD_HASH.
 """
 
 import getpass
-from passlib.hash import bcrypt
+import bcrypt
 
 
 def main():
@@ -22,7 +22,7 @@ def main():
         print("Error: passwords do not match.")
         return
 
-    hashed = bcrypt.hash(password)
+    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     print(f"\nAdd this to your .env file:\nADMIN_PASSWORD_HASH={hashed}")
 
 

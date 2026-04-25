@@ -6,7 +6,7 @@ import secrets
 import logging
 
 from fastapi import Request, Response
-from passlib.hash import bcrypt
+import bcrypt as _bcrypt
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 logger = logging.getLogger("admin.auth")
@@ -80,7 +80,7 @@ def verify_password(plain: str) -> bool:
     if not ADMIN_PASSWORD_HASH:
         return False
     try:
-        return bcrypt.verify(plain, ADMIN_PASSWORD_HASH)
+        return _bcrypt.checkpw(plain.encode("utf-8"), ADMIN_PASSWORD_HASH.encode("utf-8"))
     except Exception:
         return False
 
