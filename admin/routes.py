@@ -1077,6 +1077,7 @@ async def api_update_family_permissions(
     image_gen_allowed: str = Form("1"),
     coding_allowed: str = Form("1"),
     vision_allowed: str = Form("1"),
+    voice_allowed: str = Form("1"),
     daily_message_limit: str = Form("0"),
     daily_image_limit: str = Form("0"),
 ):
@@ -1097,6 +1098,7 @@ async def api_update_family_permissions(
         image_gen_allowed=int(image_gen_allowed),
         coding_allowed=int(coding_allowed),
         vision_allowed=int(vision_allowed),
+        voice_allowed=int(voice_allowed),
         daily_message_limit=int(daily_message_limit),
         daily_image_limit=int(daily_image_limit),
     )
@@ -1122,6 +1124,110 @@ async def api_delete_family_user(
     admin_db.delete_portal_user(user_id)
     _audit(request, session, "delete_family_user", target=user["username"], result="SUCCESS")
     return {"success": True}
+
+
+# ---------------------------------------------------------------------------
+# Voice settings page
+# ---------------------------------------------------------------------------
+
+@router.get("/voice", response_class=HTMLResponse)
+async def voice_page(request: Request):
+    session = _require_session(request)
+    if not session:
+        return RedirectResponse("/admin/login", status_code=302)
+
+    admin_db = _get_admin_db(request)
+    voice_settings = {}
+    voice_keys = [
+        "voice_enabled", "stt_provider", "stt_whisper_url",
+        "allow_browser_stt", "allow_whisper_fallback",
+        "tts_piper_url", "tts_voice", "voice_max_seconds", "voice_audio_dir",
+    ]
+    if admin_db and admin_db.available:
+        for key in voice_keys:
+            row = admin_db.get_setting(key)
+            voice_settings[key] = row["value"] if row else ""
+
+    return templates.TemplateResponse(request, "admin/voice.html", {
+        "active_page": "voice",
+        "voice_settings": voice_settings,
+        "csrf_token": session.get("csrf", ""),
+    })
+
+
+@router.post("/api/voice/settings")
+async def api_voice_settings(request: Request):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+
+    body = await request.form()
+    csrf_token = body.get("csrf_token", "")
+    csrf_err = _check_csrf(request, session, csrf_token)
+    if csrf_err:
+        return csrf_err
+
+    admin_db = _get_admin_db(request)
+    if not admin_db or not admin_db.available:
+        return JSONResponse(status_code=500, content={"success": False, "message": "DB unavailable"})
+
+    updater = session.get("user", "admin")
+    settings_map = {
+        "voice_enabled": ("bool", 0),
+        "stt_provider": ("string", 0),
+        "stt_whisper_url": ("string", 0),
+        "allow_browser_stt": ("bool", 0),
+        "allow_whisper_fallback": ("bool", 0),
+        "tts_piper_url": ("string", 0),
+        "tts_voice": ("string", 0),
+        "voice_max_seconds": ("int", 0),
+        "voice_audio_dir": ("string", 0),
+    }
+
+    for key, (vtype, secret) in settings_map.items():
+        val = body.get(key)
+        if val is not None:
+            admin_db.set_setting(key, val, vtype, secret, updater)
+
+    _audit(request, session, "update_voice_settings", result="SUCCESS")
+    return {"success": True}
+
+
+@router.get("/api/voice/health")
+async def api_voice_health(request: Request):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    import httpx
+
+    admin_db = _get_admin_db(request)
+    tts_url = "http://127.0.0.1:5400"
+    stt_url = "http://127.0.0.1:5300"
+    if admin_db and admin_db.available:
+        tts_row = admin_db.get_setting_raw("tts_piper_url")
+        if tts_row:
+            tts_url = tts_row["value"]
+        stt_row = admin_db.get_setting_raw("stt_whisper_url")
+        if stt_row:
+            stt_url = stt_row["value"]
+
+    result = {"tts": {"url": tts_url, "status": "offline"}, "stt": {"url": stt_url, "status": "offline"}}
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as client:
+        try:
+            r = await client.get(f"{tts_url}/health")
+            result["tts"]["status"] = "online" if r.status_code == 200 else f"error ({r.status_code})"
+        except Exception:
+            pass
+
+        try:
+            r = await client.get(f"{stt_url}/health")
+            result["stt"]["status"] = "online" if r.status_code == 200 else f"error ({r.status_code})"
+        except Exception:
+            pass
+
+    return result
 
 
 # ---------------------------------------------------------------------------

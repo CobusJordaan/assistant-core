@@ -169,6 +169,7 @@ class AdminDB:
                 image_gen_allowed INTEGER NOT NULL DEFAULT 1,
                 coding_allowed INTEGER NOT NULL DEFAULT 1,
                 vision_allowed INTEGER NOT NULL DEFAULT 1,
+                voice_allowed INTEGER NOT NULL DEFAULT 1,
                 daily_message_limit INTEGER NOT NULL DEFAULT 0,
                 daily_image_limit INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
@@ -256,6 +257,14 @@ class AdminDB:
         """Insert any new default settings that don't already exist."""
         now = _now()
 
+        # Add voice_allowed column to portal_users if missing
+        try:
+            self._conn.execute("SELECT voice_allowed FROM portal_users LIMIT 1")
+        except sqlite3.OperationalError:
+            self._conn.execute("ALTER TABLE portal_users ADD COLUMN voice_allowed INTEGER NOT NULL DEFAULT 1")
+            self._conn.commit()
+            logger.info("Added voice_allowed column to portal_users")
+
         # Migrate default_sampler → default_sampler_name
         old_sampler = self._conn.execute(
             "SELECT value FROM app_settings WHERE key = 'default_sampler'"
@@ -318,6 +327,16 @@ class AdminDB:
             ("ai_router_display_id", "draadloze-ai", "string", 0),
             ("ai_router_api_key_hash", "", "string", 1),
             ("ai_router_api_key_salt", "", "string", 1),
+            # Voice settings
+            ("voice_enabled", "false", "bool", 0),
+            ("stt_provider", "both", "string", 0),
+            ("stt_whisper_url", "http://127.0.0.1:5300", "string", 0),
+            ("allow_browser_stt", "true", "bool", 0),
+            ("allow_whisper_fallback", "true", "bool", 0),
+            ("tts_piper_url", "http://127.0.0.1:5400", "string", 0),
+            ("tts_voice", "en_US-lessac-medium", "string", 0),
+            ("voice_max_seconds", "60", "int", 0),
+            ("voice_audio_dir", "/opt/ai-assistant/data/portal/audio", "string", 0),
         ]
         self._executemany_write(
             """INSERT OR IGNORE INTO app_settings (key, value, value_type, is_secret, updated_at, updated_by)
@@ -726,7 +745,8 @@ class AdminDB:
     def update_portal_user(self, user_id: int, **fields) -> bool:
         allowed = {"display_name", "password_hash", "role", "is_active",
                     "chat_allowed", "image_gen_allowed", "coding_allowed",
-                    "vision_allowed", "daily_message_limit", "daily_image_limit",
+                    "vision_allowed", "voice_allowed",
+                    "daily_message_limit", "daily_image_limit",
                     "last_login_at"}
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:

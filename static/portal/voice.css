@@ -1,0 +1,151 @@
+/* Voice overlay + waveform styles */
+
+/* Mic button in input area */
+.btn-mic {
+    width: 44px;
+    height: 44px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.btn-mic:hover { color: var(--text); border-color: var(--text-muted); }
+.btn-mic.recording { color: var(--red); border-color: var(--red); animation: mic-pulse 1.5s infinite; }
+.btn-mic svg { width: 20px; height: 20px; }
+
+@keyframes mic-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Fullscreen voice overlay */
+.voice-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 10, 15, 0.95);
+    z-index: 500;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+}
+
+.voice-overlay.visible {
+    display: flex;
+}
+
+/* Close button */
+.voice-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 8px;
+    line-height: 1;
+    border-radius: 8px;
+    transition: color 0.2s;
+}
+
+.voice-close:hover { color: var(--text); }
+
+/* Waveform bars */
+.voice-bars {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 80px;
+}
+
+.voice-bar {
+    width: 4px;
+    height: 8px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, var(--blue), #60a5fa);
+    transition: height 0.1s ease;
+    min-height: 4px;
+}
+
+/* Status text */
+.voice-status {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+/* Live transcript */
+.voice-transcript {
+    color: var(--text);
+    font-size: 1.1rem;
+    text-align: center;
+    max-width: 500px;
+    min-height: 1.6em;
+    padding: 0 20px;
+    word-wrap: break-word;
+}
+
+/* Stop button */
+.voice-stop-btn {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--red);
+    border: 3px solid transparent;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s, border-color 0.3s;
+}
+
+.voice-stop-btn:hover { transform: scale(1.05); }
+.voice-stop-btn.recording { border-color: rgba(239, 68, 68, 0.4); animation: stop-pulse 1.5s infinite; }
+
+.voice-stop-btn svg { width: 24px; height: 24px; }
+
+@keyframes stop-pulse {
+    0%, 100% { border-color: rgba(239, 68, 68, 0.2); }
+    50% { border-color: rgba(239, 68, 68, 0.6); }
+}
+
+/* Speaking state — bars turn green */
+.voice-overlay.speaking .voice-bar {
+    background: linear-gradient(180deg, var(--green), #4ade80);
+}
+
+/* Safe area insets for standalone PWA */
+@supports (padding-top: env(safe-area-inset-top)) {
+    .voice-close { top: calc(16px + env(safe-area-inset-top)); }
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+    .btn-mic { width: 40px; height: 40px; }
+    .btn-mic svg { width: 18px; height: 18px; }
+
+    .voice-bars { height: 60px; gap: 5px; }
+    .voice-bar { width: 3px; }
+    .voice-transcript { font-size: 1rem; max-width: 90vw; }
+    .voice-stop-btn { width: 56px; height: 56px; }
+    .voice-stop-btn svg { width: 20px; height: 20px; }
+}
+
+/* Small phones */
+@media (max-width: 380px) {
+    .btn-mic { width: 36px; height: 36px; }
+    .voice-bars { height: 48px; }
+    .voice-stop-btn { width: 48px; height: 48px; }
+}

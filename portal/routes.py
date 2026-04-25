@@ -1,15 +1,18 @@
-"""Portal routes — login, chat, conversations."""
+"""Portal routes — login, chat, conversations, voice."""
 
 import json
 import logging
 import os
+import re
 import secrets
+import uuid
 from datetime import date
+from pathlib import Path
 
 import bcrypt as _bcrypt
 import httpx
-from fastapi import APIRouter, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
+from fastapi import APIRouter, Request, Form, HTTPException, UploadFile, File
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 
 from portal.auth import (
@@ -38,6 +41,19 @@ def _get_db(request: Request):
 
 def _require_session(request: Request) -> dict | None:
     return get_portal_session(request)
+
+
+def _get_voice_config(db) -> dict:
+    """Read voice-related admin settings."""
+    config = {}
+    keys = ["voice_enabled", "allow_browser_stt", "allow_whisper_fallback",
+            "tts_piper_url", "tts_voice", "stt_whisper_url", "voice_max_seconds",
+            "voice_audio_dir", "stt_provider"]
+    if db and db.available:
+        for key in keys:
+            row = db.get_setting_raw(key)
+            config[key] = row["value"] if row else ""
+    return config
 
 
 # ---------------------------------------------------------------------------
@@ -105,12 +121,18 @@ async def chat_page(request: Request):
     conversations = db.list_conversations(session["user_id"]) if db else []
     user = db.get_portal_user_by_id(session["user_id"]) if db else None
 
+    voice_cfg = _get_voice_config(db)
+
     response = templates.TemplateResponse(request, "portal/chat.html", {
         "session": session,
         "conversations": conversations,
         "active_conv": None,
         "messages": [],
         "vision_allowed": user.get("vision_allowed", 1) if user else 1,
+        "voice_allowed": user.get("voice_allowed", 1) if user else 0,
+        "voice_enabled": voice_cfg.get("voice_enabled") == "true",
+        "allow_browser_stt": voice_cfg.get("allow_browser_stt") == "true",
+        "allow_whisper_fallback": voice_cfg.get("allow_whisper_fallback") == "true",
     })
     refresh_portal_session(request, response)
     return response
@@ -130,6 +152,7 @@ async def chat_conversation(request: Request, conv_id: int):
     conversations = db.list_conversations(session["user_id"])
     messages = db.get_messages(conv_id)
     user = db.get_portal_user_by_id(session["user_id"]) if db else None
+    voice_cfg = _get_voice_config(db)
 
     response = templates.TemplateResponse(request, "portal/chat.html", {
         "session": session,
@@ -137,6 +160,10 @@ async def chat_conversation(request: Request, conv_id: int):
         "active_conv": conv,
         "messages": messages,
         "vision_allowed": user.get("vision_allowed", 1) if user else 1,
+        "voice_allowed": user.get("voice_allowed", 1) if user else 0,
+        "voice_enabled": voice_cfg.get("voice_enabled") == "true",
+        "allow_browser_stt": voice_cfg.get("allow_browser_stt") == "true",
+        "allow_whisper_fallback": voice_cfg.get("allow_whisper_fallback") == "true",
     })
     refresh_portal_session(request, response)
     return response
@@ -305,7 +332,6 @@ async def _stream_chat(db, conv_id: int, user_id: int, today: str, messages: lis
         full_response = error_msg
 
     # Extract image URL from markdown if present (e.g. ![alt](http://...))
-    import re
     img_match = re.search(r'!\[[^\]]*\]\((https?://[^)]+)\)', full_response)
     if img_match:
         image_url = img_match.group(1)
@@ -383,3 +409,198 @@ async def api_usage(request: Request):
         "daily_message_limit": user["daily_message_limit"] if user else 0,
         "daily_image_limit": user["daily_image_limit"] if user else 0,
     }
+
+
+# ---------------------------------------------------------------------------
+# Voice API
+# ---------------------------------------------------------------------------
+
+@router.post("/api/voice/transcribe")
+async def api_voice_transcribe(request: Request):
+    """Forward audio to Whisper STT for transcription."""
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Not logged in"})
+
+    db = _get_db(request)
+    user = db.get_portal_user_by_id(session["user_id"]) if db else None
+    if not user or not user.get("voice_allowed", 0):
+        return JSONResponse(status_code=403, content={"error": "Voice is not enabled for your account."})
+
+    voice_cfg = _get_voice_config(db)
+    if voice_cfg.get("voice_enabled") != "true":
+        return JSONResponse(status_code=503, content={"error": "Voice is not available yet."})
+
+    # Parse multipart form with audio file
+    form = await request.form()
+    audio_file = form.get("file")
+    if not audio_file:
+        return JSONResponse(status_code=400, content={"error": "No audio file provided"})
+
+    audio_bytes = await audio_file.read()
+    audio_size = len(audio_bytes)
+    logger.info("Voice transcribe: user=%s, audio_size=%d, content_type=%s",
+                session["user"], audio_size, getattr(audio_file, "content_type", "unknown"))
+
+    whisper_url = voice_cfg.get("stt_whisper_url", "http://127.0.0.1:5300")
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+            files = {"file": ("audio.webm", audio_bytes, getattr(audio_file, "content_type", "audio/webm"))}
+            data = {"model": "whisper-1"}
+            resp = await client.post(f"{whisper_url}/v1/audio/transcriptions", files=files, data=data)
+
+            if resp.status_code != 200:
+                logger.error("Whisper error: status=%d body=%s", resp.status_code, resp.text[:500])
+                return JSONResponse(status_code=502, content={"error": "Transcription failed."})
+
+            result = resp.json()
+            text = result.get("text", "").strip()
+            logger.info("Whisper transcription: len=%d", len(text))
+            return {"text": text}
+
+    except httpx.ConnectError:
+        return JSONResponse(status_code=502, content={"error": "Cannot connect to Whisper service."})
+    except Exception as e:
+        logger.error("Transcribe error: %s", e)
+        return JSONResponse(status_code=500, content={"error": "Transcription failed."})
+
+
+@router.post("/api/voice")
+async def api_voice(request: Request):
+    """Process voice message: get AI reply + TTS audio."""
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Not logged in"})
+
+    db = _get_db(request)
+    if not db:
+        return JSONResponse(status_code=503, content={"error": "Database unavailable"})
+
+    user = db.get_portal_user_by_id(session["user_id"])
+    if not user or not user["is_active"]:
+        return JSONResponse(status_code=403, content={"error": "Account disabled"})
+    if not user.get("voice_allowed", 0):
+        return JSONResponse(status_code=403, content={"error": "Voice is not enabled for your account."})
+
+    voice_cfg = _get_voice_config(db)
+    if voice_cfg.get("voice_enabled") != "true":
+        return JSONResponse(status_code=503, content={"error": "Voice is not available yet."})
+
+    body = await request.json()
+    transcript = body.get("transcript", "").strip()
+    conv_id = body.get("conversation_id")
+
+    if not transcript:
+        return JSONResponse(status_code=400, content={"error": "Empty transcript"})
+
+    user_id = session["user_id"]
+    today = date.today().isoformat()
+
+    # Check daily limits
+    usage = db.get_daily_usage(user_id, today)
+    if user["daily_message_limit"] > 0 and usage["message_count"] >= user["daily_message_limit"]:
+        return JSONResponse(status_code=429, content={"error": "Daily message limit reached"})
+
+    # Create conversation if needed
+    if not conv_id:
+        title = transcript[:50] + ("..." if len(transcript) > 50 else "")
+        conv_id = db.create_conversation(user_id, title)
+    else:
+        conv = db.get_conversation(conv_id)
+        if not conv or conv["user_id"] != user_id:
+            return JSONResponse(status_code=403, content={"error": "Access denied"})
+
+    # Save user message
+    db.add_message(conv_id, "user", transcript)
+    db.increment_usage(user_id, today, messages=1)
+
+    # Build messages for AI Router
+    history = db.get_messages(conv_id)
+    ai_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for msg in history:
+        ai_messages.append({"role": msg["role"], "content": msg["content"]})
+
+    logger.info("Voice request: user=%s, transcript_len=%d, conv=%d", session["user"], len(transcript), conv_id)
+
+    # Call AI Router (non-streaming for voice)
+    reply_text = ""
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0)) as client:
+            payload = {"model": "draadloze-ai", "messages": ai_messages, "stream": False}
+            resp = await client.post(
+                f"{AI_ROUTER_URL}/v1/chat/completions",
+                json=payload,
+                headers={"X-Admin-Test": "true"},
+            )
+            if resp.status_code != 200:
+                logger.error("AI Router error: status=%d", resp.status_code)
+                return JSONResponse(status_code=502, content={"error": "AI service error"})
+
+            result = resp.json()
+            reply_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+    except httpx.ConnectError:
+        return JSONResponse(status_code=502, content={"error": "Cannot connect to AI service."})
+    except Exception as e:
+        logger.error("AI Router error: %s", e)
+        return JSONResponse(status_code=500, content={"error": "AI service error"})
+
+    if not reply_text:
+        return JSONResponse(status_code=500, content={"error": "Empty AI response"})
+
+    # Save assistant message
+    db.add_message(conv_id, "assistant", reply_text)
+
+    # Generate TTS audio
+    audio_url = ""
+    tts_url = voice_cfg.get("tts_piper_url", "http://127.0.0.1:5400")
+    tts_voice = voice_cfg.get("tts_voice", "en_US-lessac-medium")
+    audio_dir = voice_cfg.get("voice_audio_dir", "/opt/ai-assistant/data/portal/audio")
+
+    try:
+        os.makedirs(audio_dir, exist_ok=True)
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
+            tts_resp = await client.post(
+                f"{tts_url}/v1/audio/speech",
+                json={"input": reply_text, "voice": tts_voice},
+            )
+            if tts_resp.status_code == 200:
+                filename = f"{uuid.uuid4().hex}.wav"
+                filepath = os.path.join(audio_dir, filename)
+                with open(filepath, "wb") as f:
+                    f.write(tts_resp.content)
+                audio_url = f"/portal/api/audio/{filename}"
+                logger.info("TTS audio saved: %s (%d bytes)", filename, len(tts_resp.content))
+            else:
+                logger.error("TTS error: status=%d", tts_resp.status_code)
+    except Exception as e:
+        logger.error("TTS error: %s", e)
+
+    return {
+        "transcript": transcript,
+        "reply_text": reply_text,
+        "audio_url": audio_url,
+        "conversation_id": conv_id,
+    }
+
+
+@router.get("/api/audio/{filename}")
+async def api_audio(request: Request, filename: str):
+    """Serve voice audio files."""
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Not logged in"})
+
+    # Validate filename to prevent path traversal
+    if not re.match(r"^[a-f0-9]+\.wav$", filename):
+        return JSONResponse(status_code=400, content={"error": "Invalid filename"})
+
+    db = _get_db(request)
+    voice_cfg = _get_voice_config(db)
+    audio_dir = voice_cfg.get("voice_audio_dir", "/opt/ai-assistant/data/portal/audio")
+    filepath = os.path.join(audio_dir, filename)
+
+    if not os.path.isfile(filepath):
+        return JSONResponse(status_code=404, content={"error": "Audio not found"})
+
+    return FileResponse(filepath, media_type="audio/wav")

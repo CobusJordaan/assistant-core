@@ -1,0 +1,253 @@
+{% extends "admin/base.html" %}
+{% block title %}Voice{% endblock %}
+{% block page_title %}Voice Settings{% endblock %}
+{% block page_subtitle %}Speech-to-text and text-to-speech configuration{% endblock %}
+
+{% block content %}
+<div id="voice-alert"></div>
+
+<div class="card-grid" style="grid-template-columns: repeat(2, 1fr);">
+
+    <!-- Service Health -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-purple">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            </div>
+            <h3>Service Health</h3>
+        </div>
+        <div id="health-status">
+            <div class="stat">
+                <label>TTS (Piper)</label>
+                <span class="val" id="tts-status" style="color:var(--muted)">Checking...</span>
+            </div>
+            <div class="stat">
+                <label>STT (Whisper)</label>
+                <span class="val" id="stt-status" style="color:var(--muted)">Checking...</span>
+            </div>
+        </div>
+        <div class="card-actions" style="margin-top:12px;">
+            <button class="btn btn-ghost btn-sm" onclick="checkHealth()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                Check Health
+            </button>
+        </div>
+    </div>
+
+    <!-- TTS Test -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            </div>
+            <h3>TTS Test</h3>
+        </div>
+        <div style="display:flex; gap:8px; align-items:flex-end;">
+            <div class="form-group" style="flex:1; margin-bottom:0;">
+                <label class="form-label">Text to speak</label>
+                <input type="text" class="form-input" id="tts-test-text" value="Hello, this is a test of the voice system." placeholder="Enter text...">
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="testTTS()" id="btn-test-tts" style="height:36px;">
+                Test
+            </button>
+        </div>
+        <audio id="tts-audio" style="width:100%; margin-top:10px; display:none;" controls></audio>
+    </div>
+</div>
+
+<!-- Settings Form -->
+<div class="card" style="margin-top:20px;">
+    <div class="card-header">
+        <div class="card-header-icon metric-icon-green">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        </div>
+        <h3>Voice Configuration</h3>
+    </div>
+
+    <form id="voice-form" onsubmit="saveSettings(event)">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <!-- Master Switch -->
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--border);">
+            <label style="display:flex; align-items:center; gap:8px; font-size:0.9rem; font-weight:600;">
+                <input type="checkbox" id="voice_enabled" name="voice_enabled" {{ 'checked' if voice_settings.get('voice_enabled') == 'true' }}>
+                Voice Mode Enabled
+            </label>
+            <span style="font-size:0.75rem; color:var(--muted);">Master switch for all voice features</span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+            <!-- STT Section -->
+            <div>
+                <h4 style="font-size:0.85rem; font-weight:600; margin-bottom:12px; color:var(--text);">Speech-to-Text (STT)</h4>
+
+                <div class="form-group">
+                    <label class="form-label">STT Provider</label>
+                    <select class="form-select" id="stt_provider" name="stt_provider">
+                        <option value="both" {{ 'selected' if voice_settings.get('stt_provider', 'both') == 'both' }}>Both (Browser + Whisper fallback)</option>
+                        <option value="browser_only" {{ 'selected' if voice_settings.get('stt_provider') == 'browser_only' }}>Browser only</option>
+                        <option value="whisper_only" {{ 'selected' if voice_settings.get('stt_provider') == 'whisper_only' }}>Whisper only</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Whisper Service URL</label>
+                    <input type="text" class="form-input" id="stt_whisper_url" name="stt_whisper_url"
+                           value="{{ voice_settings.get('stt_whisper_url', 'http://127.0.0.1:5300') }}">
+                </div>
+
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem;">
+                        <input type="checkbox" id="allow_browser_stt" name="allow_browser_stt"
+                               {{ 'checked' if voice_settings.get('allow_browser_stt', 'true') == 'true' }}>
+                        Allow browser STT
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem;">
+                        <input type="checkbox" id="allow_whisper_fallback" name="allow_whisper_fallback"
+                               {{ 'checked' if voice_settings.get('allow_whisper_fallback', 'true') == 'true' }}>
+                        Allow Whisper fallback
+                    </label>
+                </div>
+            </div>
+
+            <!-- TTS Section -->
+            <div>
+                <h4 style="font-size:0.85rem; font-weight:600; margin-bottom:12px; color:var(--text);">Text-to-Speech (TTS)</h4>
+
+                <div class="form-group">
+                    <label class="form-label">TTS Provider</label>
+                    <select class="form-select" disabled>
+                        <option selected>Piper TTS</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Piper Service URL</label>
+                    <input type="text" class="form-input" id="tts_piper_url" name="tts_piper_url"
+                           value="{{ voice_settings.get('tts_piper_url', 'http://127.0.0.1:5400') }}">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Voice Name</label>
+                    <input type="text" class="form-input" id="tts_voice" name="tts_voice"
+                           value="{{ voice_settings.get('tts_voice', 'en_US-lessac-medium') }}">
+                </div>
+            </div>
+        </div>
+
+        <!-- General Section -->
+        <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+            <h4 style="font-size:0.85rem; font-weight:600; margin-bottom:12px; color:var(--text);">General</h4>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                <div class="form-group">
+                    <label class="form-label">Max Recording Seconds</label>
+                    <input type="number" class="form-input" id="voice_max_seconds" name="voice_max_seconds"
+                           value="{{ voice_settings.get('voice_max_seconds', '60') }}" min="5" max="300">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Audio Output Directory</label>
+                    <input type="text" class="form-input" id="voice_audio_dir" name="voice_audio_dir"
+                           value="{{ voice_settings.get('voice_audio_dir', '/opt/ai-assistant/data/portal/audio') }}">
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top:16px; display:flex; justify-content:flex-end;">
+            <button type="submit" class="btn btn-primary btn-sm" id="btn-save">Save Settings</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+const csrfToken = '{{ csrf_token }}';
+
+function showAlert(msg, type) {
+    document.getElementById('voice-alert').innerHTML =
+        '<div class="alert alert-' + (type === 'success' ? 'success' : 'error') + '">' + msg + '</div>';
+    setTimeout(() => { document.getElementById('voice-alert').innerHTML = ''; }, 5000);
+}
+
+async function checkHealth() {
+    document.getElementById('tts-status').textContent = 'Checking...';
+    document.getElementById('tts-status').style.color = 'var(--muted)';
+    document.getElementById('stt-status').textContent = 'Checking...';
+    document.getElementById('stt-status').style.color = 'var(--muted)';
+
+    try {
+        const r = await fetch('/admin/api/voice/health');
+        const data = await r.json();
+
+        const ttsEl = document.getElementById('tts-status');
+        ttsEl.textContent = data.tts.status + ' — ' + data.tts.url;
+        ttsEl.style.color = data.tts.status === 'online' ? 'var(--green)' : 'var(--red)';
+
+        const sttEl = document.getElementById('stt-status');
+        sttEl.textContent = data.stt.status + ' — ' + data.stt.url;
+        sttEl.style.color = data.stt.status === 'online' ? 'var(--green)' : 'var(--red)';
+    } catch (e) {
+        document.getElementById('tts-status').textContent = 'Error: ' + e.message;
+        document.getElementById('stt-status').textContent = 'Error: ' + e.message;
+    }
+}
+
+async function saveSettings(e) {
+    e.preventDefault();
+    const fd = new FormData();
+    fd.append('csrf_token', csrfToken);
+    fd.append('voice_enabled', document.getElementById('voice_enabled').checked ? 'true' : 'false');
+    fd.append('stt_provider', document.getElementById('stt_provider').value);
+    fd.append('stt_whisper_url', document.getElementById('stt_whisper_url').value);
+    fd.append('allow_browser_stt', document.getElementById('allow_browser_stt').checked ? 'true' : 'false');
+    fd.append('allow_whisper_fallback', document.getElementById('allow_whisper_fallback').checked ? 'true' : 'false');
+    fd.append('tts_piper_url', document.getElementById('tts_piper_url').value);
+    fd.append('tts_voice', document.getElementById('tts_voice').value);
+    fd.append('voice_max_seconds', document.getElementById('voice_max_seconds').value);
+    fd.append('voice_audio_dir', document.getElementById('voice_audio_dir').value);
+
+    try {
+        const r = await fetch('/admin/api/voice/settings', { method: 'POST', body: fd });
+        const data = await r.json();
+        showAlert(data.success ? 'Settings saved.' : (data.message || 'Failed.'), data.success ? 'success' : 'error');
+    } catch (e) { showAlert('Error: ' + e.message, 'error'); }
+}
+
+async function testTTS() {
+    const text = document.getElementById('tts-test-text').value.trim();
+    if (!text) return;
+
+    const btn = document.getElementById('btn-test-tts');
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+
+    try {
+        const ttsUrl = document.getElementById('tts_piper_url').value;
+        const voice = document.getElementById('tts_voice').value;
+
+        const r = await fetch(ttsUrl + '/v1/audio/speech', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ input: text, voice: voice }),
+        });
+
+        if (!r.ok) throw new Error('TTS returned ' + r.status);
+
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = document.getElementById('tts-audio');
+        audio.src = url;
+        audio.style.display = 'block';
+        audio.play();
+    } catch (e) {
+        showAlert('TTS test failed: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Test';
+    }
+}
+
+checkHealth();
+{% endblock %}
