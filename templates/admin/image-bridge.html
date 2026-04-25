@@ -314,22 +314,30 @@ async function checkIbHealth() {
     label.textContent = 'Checking...';
 
     try {
-        const r = await fetch(`http://127.0.0.1:{{ bridge_port }}/health`);
+        const r = await fetch('/admin/api/image-bridge/health');
+        if (r.status === 401) { window.location.href = '/admin/login'; return; }
         const data = await r.json();
         if (data.status === 'ok') {
             label.textContent = 'Healthy';
             label.style.color = 'var(--green)';
             if (data.forge_connected) {
-                document.getElementById('forge-status').textContent = 'Connected';
-                document.getElementById('forge-status').style.color = 'var(--green)';
+                const forgeEl = document.getElementById('forge-status');
+                forgeEl.textContent = 'Connected';
+                forgeEl.style.color = 'var(--green)';
             }
+            showIbAlert('Image Bridge is healthy', 'success');
+        } else if (data.status === 'unreachable') {
+            label.textContent = 'Not Reachable';
+            label.style.color = 'var(--red)';
+            showIbAlert('Image Bridge service is not reachable — is it running?', 'error');
         } else {
             label.textContent = 'Unhealthy';
             label.style.color = 'var(--orange)';
         }
     } catch (e) {
-        label.textContent = 'Not Reachable';
+        label.textContent = 'Error';
         label.style.color = 'var(--red)';
+        showIbAlert('Health check failed: ' + e.message, 'error');
     }
 
     setTimeout(() => {

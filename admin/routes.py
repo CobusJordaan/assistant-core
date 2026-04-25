@@ -602,6 +602,31 @@ async def api_image_bridge_test_forge(
     return {"success": connected, "forge_url": forge_url, "models_count": models_count}
 
 
+@router.get("/api/image-bridge/health")
+async def api_image_bridge_health(request: Request):
+    """Proxy health check to the image-bridge service (server-side)."""
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    admin_db = _get_admin_db(request)
+    port = "5000"
+    if admin_db and admin_db.available:
+        p = admin_db.get_setting("image_bridge_port")
+        if p:
+            port = p["value"]
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(f"http://127.0.0.1:{port}/health")
+            if resp.status_code == 200:
+                return resp.json()
+            return {"status": "error", "code": resp.status_code}
+    except Exception:
+        return {"status": "unreachable"}
+
+
 @router.post("/api/image-bridge/test-generate")
 async def api_image_bridge_test_generate(
     request: Request,
