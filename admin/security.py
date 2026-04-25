@@ -38,6 +38,7 @@ ALLOWED_COMMANDS: dict[str, list[str]] = {
     "/usr/bin/docker": ["ps", "logs", "restart", "inspect"],
     "/usr/bin/journalctl": ["-u", "--no-pager", "-n", "--since"],
     "/usr/bin/nvidia-smi": [],
+    "/usr/bin/sensors": [],
     "/usr/bin/git": ["status", "pull", "log", "rev-parse", "diff", "--porcelain"],
     "/usr/bin/sudo": ["/bin/systemctl", "/usr/bin/systemctl"],
 }

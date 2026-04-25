@@ -140,6 +140,100 @@ def get_gpu_info() -> dict | None:
     }
 
 
+def get_system_sensors() -> dict | None:
+    """Parse `sensors` command output for thermal overview.
+
+    Returns dict with cpu_package, cpu_core_avg, cpu_core_max,
+    nvme_temp, system_temp, board_temp_avg, cores (per-core list).
+    Returns None if sensors command fails.
+    """
+    import re
+
+    result = run_command(["/usr/bin/sensors"], timeout=5, mask=False)
+    if not result["success"] or not result["output"]:
+        return None
+
+    output = result["output"]
+    data = {
+        "cpu_package": None,
+        "cpu_core_avg": None,
+        "cpu_core_max": None,
+        "nvme_temp": None,
+        "system_temp": None,
+        "board_temp_avg": None,
+        "cores": [],
+    }
+
+    def parse_temp(line: str) -> float | None:
+        m = re.search(r'[+\-]?([\d.]+)\s*°?C', line)
+        if m:
+            val = float(m.group(1))
+            if val > 0:
+                return round(val, 1)
+        return None
+
+    # Split into sections by chip header (non-indented lines after blank lines)
+    sections = re.split(r'\n(?=\S)', output)
+
+    core_temps = []
+    jc42_temps = []
+
+    for section in sections:
+        lines = section.strip().split('\n')
+        if not lines:
+            continue
+        header = lines[0].lower()
+
+        if 'coretemp' in header or 'k10temp' in header:
+            for line in lines[1:]:
+                lower = line.lower().strip()
+                if lower.startswith('package id') or lower.startswith('tctl') or lower.startswith('tdie'):
+                    t = parse_temp(line)
+                    if t is not None:
+                        data["cpu_package"] = t
+                elif lower.startswith('core'):
+                    t = parse_temp(line)
+                    if t is not None:
+                        core_match = re.match(r'Core\s+(\d+)', line, re.IGNORECASE)
+                        core_num = int(core_match.group(1)) if core_match else len(core_temps)
+                        core_temps.append(t)
+                        data["cores"].append({"core": core_num, "temp": t})
+
+        elif 'nvme' in header:
+            for line in lines[1:]:
+                if line.lower().strip().startswith('composite'):
+                    t = parse_temp(line)
+                    if t is not None:
+                        data["nvme_temp"] = t
+                        break
+
+        elif 'acpitz' in header or 'acpi' in header:
+            for line in lines[1:]:
+                lower = line.lower().strip()
+                if lower.startswith('temp1') or lower.startswith('temp'):
+                    t = parse_temp(line)
+                    if t is not None:
+                        data["system_temp"] = t
+                        break
+
+        elif 'jc42' in header:
+            for line in lines[1:]:
+                lower = line.lower().strip()
+                if lower.startswith('temp1') or lower.startswith('temp'):
+                    t = parse_temp(line)
+                    if t is not None:
+                        jc42_temps.append(t)
+
+    if core_temps:
+        data["cpu_core_avg"] = round(sum(core_temps) / len(core_temps), 1)
+        data["cpu_core_max"] = round(max(core_temps), 1)
+
+    if jc42_temps:
+        data["board_temp_avg"] = round(sum(jc42_temps) / len(jc42_temps), 1)
+
+    return data
+
+
 def get_db_info(db_path: str = "memory.db") -> list[dict]:
     """SQLite file info as a list. Includes main DB + scanned extras."""
     dbs = []

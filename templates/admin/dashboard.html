@@ -171,6 +171,56 @@
         </div>
     </div>
 
+    <!-- Thermal Overview -->
+    <div class="card" id="card-thermal">
+        <div class="card-header">
+            <div class="card-header-icon metric-icon-orange">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+            </div>
+            <h3>Thermal Overview</h3>
+            <button class="btn btn-ghost btn-sm" onclick="toggleCoreTemps()" id="core-toggle-btn" style="display:none;margin-left:auto;font-size:0.72rem">Show Cores</button>
+        </div>
+        <div id="thermal-content">
+            {% if status.sensors %}
+            {% set s = status.sensors %}
+            {% macro temp_fill(t) %}{{ 'fill-red' if t > 70 else 'fill-orange' if t >= 50 else 'fill-green' }}{% endmacro %}
+            {% if s.cpu_package is not none %}
+            <div class="progress-row">
+                <div class="progress-header"><span class="progress-label">CPU Package</span><span class="progress-value">{{ s.cpu_package }}°C</span></div>
+                <div class="progress-track"><div class="progress-fill {{ temp_fill(s.cpu_package) }}" style="width: {{ [s.cpu_package, 100] | min }}%"></div></div>
+            </div>
+            {% endif %}
+            {% if s.cpu_core_max is not none %}
+            <div class="progress-row">
+                <div class="progress-header"><span class="progress-label">CPU Max Core</span><span class="progress-value">{{ s.cpu_core_max }}°C</span></div>
+                <div class="progress-track"><div class="progress-fill {{ temp_fill(s.cpu_core_max) }}" style="width: {{ [s.cpu_core_max, 100] | min }}%"></div></div>
+            </div>
+            {% endif %}
+            {% if status.gpu and status.gpu.temperature is not none %}
+            <div class="stat"><label>GPU</label><span class="val">{{ status.gpu.temperature }}°C</span></div>
+            {% endif %}
+            {% if s.nvme_temp is not none %}
+            <div class="stat"><label>NVMe</label><span class="val">{{ s.nvme_temp }}°C</span></div>
+            {% endif %}
+            {% if s.board_temp_avg is not none %}
+            <div class="stat"><label>Board Avg</label><span class="val">{{ s.board_temp_avg }}°C</span></div>
+            {% endif %}
+            {% if s.system_temp is not none %}
+            <div class="stat"><label>System</label><span class="val">{{ s.system_temp }}°C</span></div>
+            {% endif %}
+            {% else %}
+            <div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">Sensors not available</span></div>
+            {% endif %}
+        </div>
+        <div id="core-temps-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+            {% if status.sensors and status.sensors.cores %}
+            {% for c in status.sensors.cores %}
+            <div class="stat"><label>Core {{ c.core }}</label><span class="val">{{ c.temp }}°C</span></div>
+            {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+
     <!-- CPU / RAM -->
     <div class="card" id="card-cpu">
         <div class="card-header">
@@ -313,6 +363,25 @@ function makeBar(label, value, pct, cls) {
     </div>`;
 }
 
+function tempFill(t) {
+    if (t > 70) return 'fill-red';
+    if (t >= 50) return 'fill-orange';
+    return 'fill-green';
+}
+
+function toggleCoreTemps() {
+    const el = document.getElementById('core-temps-detail');
+    const btn = document.getElementById('core-toggle-btn');
+    if (!el) return;
+    if (el.style.display === 'none') {
+        el.style.display = 'block';
+        if (btn) btn.textContent = 'Hide Cores';
+    } else {
+        el.style.display = 'none';
+        if (btn) btn.textContent = 'Show Cores';
+    }
+}
+
 /* SVG icon strings for JS-rendered content */
 const SVG_REFRESH = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
 
@@ -404,6 +473,39 @@ function updateDashboard(data) {
         document.getElementById('gpu-content').innerHTML = h;
     } else {
         document.getElementById('gpu-content').innerHTML = '<div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">Not available</span></div>';
+    }
+
+    /* Thermal Overview */
+    const thermalEl = document.getElementById('thermal-content');
+    if (thermalEl) {
+        const s = data.sensors;
+        const gpuT = data.gpu ? data.gpu.temperature : null;
+        if (s) {
+            let h = '';
+            if (s.cpu_package != null) h += makeBar('CPU Package', s.cpu_package+'°C', s.cpu_package, tempFill(s.cpu_package));
+            if (s.cpu_core_max != null) h += makeBar('CPU Max Core', s.cpu_core_max+'°C', s.cpu_core_max, tempFill(s.cpu_core_max));
+            if (gpuT != null) h += `<div class="stat"><label>GPU</label><span class="val">${gpuT}°C</span></div>`;
+            if (s.nvme_temp != null) h += `<div class="stat"><label>NVMe</label><span class="val">${s.nvme_temp}°C</span></div>`;
+            if (s.board_temp_avg != null) h += `<div class="stat"><label>Board Avg</label><span class="val">${s.board_temp_avg}°C</span></div>`;
+            if (s.system_temp != null) h += `<div class="stat"><label>System</label><span class="val">${s.system_temp}°C</span></div>`;
+            thermalEl.innerHTML = h;
+
+            // Per-core detail
+            const coreEl = document.getElementById('core-temps-detail');
+            const toggleBtn = document.getElementById('core-toggle-btn');
+            if (s.cores && s.cores.length > 0 && coreEl) {
+                toggleBtn.style.display = '';
+                let ch = '';
+                for (const c of s.cores) ch += `<div class="stat"><label>Core ${c.core}</label><span class="val">${c.temp}°C</span></div>`;
+                coreEl.innerHTML = ch;
+            } else if (toggleBtn) {
+                toggleBtn.style.display = 'none';
+            }
+        } else {
+            thermalEl.innerHTML = '<div class="stat"><label>Status</label><span class="val" style="color:var(--muted)">Sensors not available</span></div>';
+            const toggleBtn = document.getElementById('core-toggle-btn');
+            if (toggleBtn) toggleBtn.style.display = 'none';
+        }
     }
 
     /* CPU/RAM */

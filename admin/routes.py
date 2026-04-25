@@ -19,6 +19,7 @@ from admin.auth import (
 from admin.system_info import (
     get_cpu_info, get_cpu_temp, get_memory_info, get_disk_info,
     get_uptime, get_gpu_info, get_db_info, get_version_info,
+    get_system_sensors,
 )
 from admin.git_manager import get_status as git_status, pull as git_pull
 from admin.service_manager import (
@@ -80,6 +81,7 @@ def _collect_status() -> dict:
         "databases": get_db_info(DATABASE_PATH),
         "uptime": get_uptime(),
         "version": get_version_info(),
+        "sensors": get_system_sensors(),
     }
 
 
