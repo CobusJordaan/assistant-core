@@ -551,18 +551,42 @@ async def api_voice(request: Request):
     # Save assistant message
     db.add_message(conv_id, "assistant", reply_text)
 
-    # Generate TTS audio
+    # Generate TTS audio — clean markdown and limit length for speech
     audio_url = ""
     tts_url = voice_cfg.get("tts_piper_url", "http://127.0.0.1:5400")
     tts_voice = voice_cfg.get("tts_voice", "en_US-lessac-medium")
     audio_dir = voice_cfg.get("voice_audio_dir", "/opt/ai-assistant/data/portal/audio")
+
+    # Strip markdown formatting for cleaner speech
+    tts_text = reply_text
+    tts_text = re.sub(r'#{1,6}\s+', '', tts_text)           # headings
+    tts_text = re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', tts_text)  # bold/italic
+    tts_text = re.sub(r'`{1,3}[^`]*`{1,3}', '', tts_text)  # inline/block code
+    tts_text = re.sub(r'^\s*[-*]\s+', '', tts_text, flags=re.MULTILINE)  # bullet points
+    tts_text = re.sub(r'^\s*\d+\.\s+', '', tts_text, flags=re.MULTILINE)  # numbered lists
+    tts_text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', tts_text)  # links
+    tts_text = re.sub(r'\n{2,}', '. ', tts_text)            # paragraph breaks
+    tts_text = re.sub(r'\n', ' ', tts_text)                  # remaining newlines
+    tts_text = re.sub(r'\s{2,}', ' ', tts_text).strip()     # extra whitespace
+
+    # Truncate to ~500 chars at sentence boundary for long responses
+    MAX_TTS_CHARS = 500
+    if len(tts_text) > MAX_TTS_CHARS:
+        truncated = tts_text[:MAX_TTS_CHARS]
+        # Cut at last sentence boundary
+        for sep in ['. ', '! ', '? ']:
+            idx = truncated.rfind(sep)
+            if idx > MAX_TTS_CHARS // 2:
+                truncated = truncated[:idx + 1]
+                break
+        tts_text = truncated
 
     try:
         os.makedirs(audio_dir, exist_ok=True)
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
             tts_resp = await client.post(
                 f"{tts_url}/v1/audio/speech",
-                json={"input": reply_text, "voice": tts_voice},
+                json={"input": tts_text, "voice": tts_voice},
             )
             if tts_resp.status_code == 200:
                 filename = f"{uuid.uuid4().hex}.wav"
