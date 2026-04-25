@@ -31,6 +31,7 @@
             <div class="stat">
                 <label>Forge Connection</label>
                 <span class="val" id="forge-status" style="color:var(--muted)">Not checked</span>
+                <span id="forge-checked-at" style="font-size:0.7rem; color:var(--muted); margin-left:8px;"></span>
             </div>
             <div class="stat">
                 <label>API Key</label>
@@ -274,7 +275,15 @@ async function refreshIbStatus() {
             <span class="svc-dot ${dot}" style="display:inline-block;vertical-align:middle;margin-right:6px;"></span>
             ${svc.status_text || 'unknown'}</span></div>`;
         h += `<div class="stat"><label>Port</label><span class="val">${data.port}</span></div>`;
-        h += `<div class="stat"><label>Forge Connection</label><span class="val" id="forge-status" style="color:var(--muted)">Not checked</span></div>`;
+        /* Preserve forge connection state across auto-refreshes */
+        const prevForge = document.getElementById('forge-status');
+        const prevChecked = document.getElementById('forge-checked-at');
+        const forgeText = prevForge ? prevForge.textContent : 'Not checked';
+        const forgeColor = prevForge ? prevForge.style.color : 'var(--muted)';
+        const checkedText = prevChecked ? prevChecked.textContent : '';
+
+        h += `<div class="stat"><label>Forge Connection</label><span class="val" id="forge-status" style="color:${forgeColor}">${forgeText}</span>`;
+        h += `<span id="forge-checked-at" style="font-size:0.7rem; color:var(--muted); margin-left:8px;">${checkedText}</span></div>`;
         h += `<div class="stat"><label>API Key</label><span class="val" style="color:${data.key_configured ? 'var(--green)' : 'var(--orange)'}">
             ${data.key_configured ? 'Configured' : 'Not configured'}</span></div>`;
         el.innerHTML = h;
@@ -330,38 +339,53 @@ async function checkIbHealth() {
 }
 
 async function testForge() {
+    const btn = document.querySelector('[onclick="testForge()"]');
     const label = document.getElementById('forge-test-label');
     const forgeEl = document.getElementById('forge-status');
+    const checkedAt = document.getElementById('forge-checked-at');
+
+    btn.disabled = true;
     label.textContent = 'Testing...';
 
     const form = new FormData();
     form.append('csrf_token', csrfToken);
 
+    const now = new Date().toLocaleTimeString();
+
     try {
         const r = await fetch('/admin/api/image-bridge/test-forge', { method: 'POST', body: form });
         const data = await r.json();
+        checkedAt.textContent = 'Last checked: ' + now;
         if (data.success) {
             forgeEl.textContent = 'Connected';
             forgeEl.style.color = 'var(--green)';
             label.textContent = 'Connected';
             label.style.color = 'var(--green)';
+            if (data.models_count !== undefined) {
+                forgeEl.textContent = 'Connected (' + data.models_count + ' models)';
+            }
+            showIbAlert('Forge connected successfully at ' + data.forge_url, 'success');
         } else {
             forgeEl.textContent = 'Not reachable';
             forgeEl.style.color = 'var(--red)';
             label.textContent = 'Failed';
             label.style.color = 'var(--red)';
+            showIbAlert('Forge not reachable at ' + (data.forge_url || 'unknown'), 'error');
         }
     } catch (e) {
+        checkedAt.textContent = 'Last checked: ' + now;
         forgeEl.textContent = 'Error';
         forgeEl.style.color = 'var(--red)';
         label.textContent = 'Error';
         label.style.color = 'var(--red)';
+        showIbAlert('Forge connection error: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        setTimeout(() => {
+            label.textContent = 'Test Forge';
+            label.style.color = '';
+        }, 5000);
     }
-
-    setTimeout(() => {
-        label.textContent = 'Test Forge';
-        label.style.color = '';
-    }, 5000);
 }
 
 async function saveIbSettings(event) {

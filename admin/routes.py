@@ -579,18 +579,27 @@ async def api_image_bridge_test_forge(
         if s:
             forge_url = s["value"]
 
+    connected = False
+    models_count = 0
     try:
         import httpx
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(forge_url)
-            connected = resp.status_code < 500
-    except Exception as e:
+            resp = await client.get(f"{forge_url.rstrip('/')}/sdapi/v1/sd-models")
+            if resp.status_code == 200:
+                connected = True
+                models = resp.json()
+                models_count = len(models) if isinstance(models, list) else 0
+            else:
+                # Fallback: try base URL
+                resp2 = await client.get(forge_url)
+                connected = resp2.status_code < 500
+    except Exception:
         connected = False
 
     _audit(request, session, "test_forge_connection",
            target=forge_url, result="OK" if connected else "FAILED")
 
-    return {"success": connected, "forge_url": forge_url}
+    return {"success": connected, "forge_url": forge_url, "models_count": models_count}
 
 
 @router.post("/api/image-bridge/test-generate")
