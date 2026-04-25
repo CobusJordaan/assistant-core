@@ -1123,3 +1123,32 @@ a { color: var(--blue); text-decoration: none; }
 
 .card-wide { grid-column: span 2; }
 .card-full { grid-column: 1 / -1; }
+
+/* Thermal Overview grid */
+.thermal-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 24px;
+}
+.thermal-section {
+    min-width: 0;
+}
+.thermal-section-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+}
+.thermal-cores-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 24px;
+}
+@media (max-width: 900px) {
+    .thermal-grid { grid-template-columns: 1fr; }
+    .thermal-cores-grid { grid-template-columns: 1fr; }
+}
