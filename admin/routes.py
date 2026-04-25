@@ -1258,7 +1258,11 @@ async def api_voice_test_tts(request: Request):
                 json={"input": text, "voice": voice},
             )
             if r.status_code != 200:
-                return JSONResponse(status_code=502, content={"error": f"TTS returned {r.status_code}"})
+                try:
+                    detail = r.json().get("detail", r.text[:200])
+                except Exception:
+                    detail = r.text[:200]
+                return JSONResponse(status_code=502, content={"error": f"TTS {r.status_code}: {detail}"})
 
             from starlette.responses import Response
             return Response(content=r.content, media_type="audio/wav")
