@@ -21,7 +21,7 @@ from admin.system_info import (
     get_uptime, get_gpu_info, get_db_info, get_version_info,
     get_system_sensors,
 )
-from admin.git_manager import get_status as git_status, pull as git_pull
+from admin.git_manager import get_status as git_status, pull as git_pull, get_update_status
 from admin.service_manager import (
     get_all_statuses, restart_service, restart_container, get_container_detail,
 )
@@ -419,6 +419,15 @@ async def api_status(request: Request):
 
     data = _collect_status()
     return data
+
+
+@router.get("/api/update-status")
+async def api_update_status(request: Request):
+    session = _require_session(request)
+    if not session:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    return get_update_status()
 
 
 # ---------------------------------------------------------------------------

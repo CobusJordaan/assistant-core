@@ -163,6 +163,72 @@ def get_status() -> dict:
     }
 
 
+def get_update_status() -> dict:
+    """Fetch origin and compare local HEAD vs origin/main.
+
+    Returns dict with update_available, current_version, latest_version,
+    commits_behind, and commits (list of oneline log entries).
+    """
+    # Determine remote tracking branch
+    remote_branch_result = _run_git(
+        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        timeout=5,
+    )
+    remote_ref = (
+        remote_branch_result["output"].strip()
+        if remote_branch_result["success"]
+        else "origin/main"
+    )
+
+    # Fetch latest from origin (quiet, no merge)
+    fetch = _run_git(["fetch", "origin", "--quiet"], timeout=30)
+    if not fetch["success"]:
+        return {
+            "update_available": False,
+            "error": fetch.get("message", "Fetch failed"),
+            "current_version": None,
+            "latest_version": None,
+            "commits_behind": 0,
+            "commits": [],
+        }
+
+    # Get current local tag or short hash
+    local_ver = _run_git(["describe", "--tags", "--always", "HEAD"], timeout=5)
+    current = local_ver["output"].strip() if local_ver["success"] else "unknown"
+
+    # Get remote tag or short hash
+    remote_ver = _run_git(["describe", "--tags", "--always", remote_ref], timeout=5)
+    latest = remote_ver["output"].strip() if remote_ver["success"] else "unknown"
+
+    # Count commits behind
+    behind_result = _run_git(
+        ["rev-list", "--count", f"HEAD..{remote_ref}"],
+        timeout=5,
+    )
+    try:
+        commits_behind = int(behind_result["output"].strip()) if behind_result["success"] else 0
+    except ValueError:
+        commits_behind = 0
+
+    # Get commit log for changes
+    commits = []
+    if commits_behind > 0:
+        log_result = _run_git(
+            ["log", f"HEAD..{remote_ref}", "--oneline", "--no-decorate", "-n", "20"],
+            timeout=5,
+        )
+        if log_result["success"] and log_result["output"].strip():
+            commits = log_result["output"].strip().splitlines()
+
+    return {
+        "update_available": commits_behind > 0,
+        "current_version": current,
+        "latest_version": latest,
+        "commits_behind": commits_behind,
+        "commits": commits,
+    }
+
+
 def pull(user: str = "admin") -> dict:
     """Run git pull --ff-only with SSH error detection and detailed logging."""
     logger.info("=== Git pull requested by %s ===", user)

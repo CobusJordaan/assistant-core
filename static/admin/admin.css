@@ -1131,6 +1131,81 @@ a { color: var(--blue); text-decoration: none; }
 
 /* Services list — no special grid needed, vertical stack */
 
+/* ================================================================
+   Update Banner
+   ================================================================ */
+
+.update-banner {
+    background: linear-gradient(90deg, var(--blue-dim), rgba(59,130,246,0.08));
+    border-bottom: 1px solid rgba(59,130,246,0.15);
+}
+.update-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 28px;
+}
+.update-banner-content > svg {
+    color: var(--blue);
+    flex-shrink: 0;
+}
+.update-banner-text {
+    flex: 1;
+    font-size: 0.85rem;
+    color: var(--text);
+    min-width: 0;
+}
+.update-banner-text strong {
+    color: var(--blue);
+    margin-right: 8px;
+}
+.update-banner-text span {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+}
+.update-banner-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.update-banner-dismiss {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 0 4px;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: color var(--transition);
+}
+.update-banner-dismiss:hover { color: var(--text); }
+
+/* Changelog entries in modal */
+.changelog-commits {
+    max-height: 300px;
+    overflow-y: auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+}
+.changelog-entry {
+    padding: 6px 0;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+.changelog-entry + .changelog-entry {
+    border-top: 1px solid rgba(148,163,184,0.05);
+}
+.changelog-entry .git-hash {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+}
+
 /* Thermal Details — per-core grid */
 .thermal-cores-grid {
     display: grid;
