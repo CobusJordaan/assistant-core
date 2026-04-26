@@ -50,12 +50,18 @@ async def handle_whatsapp_message(
     session = session_store.get_or_create(from_number, client_id, client_name)
 
     # 2b. Detect language — current message wins, session is fallback
-    detected_lang = detect_user_language(body)
-    lang = _get_lang(session, detected_lang)
-    if lang != session.language:
-        session_store.set_language(from_number, lang)
-        session.language = lang
-    logger.info("WA language: from=%s detected=%s effective=%s", from_number, detected_lang, lang)
+    #     Short numeric/single-word inputs (menu replies) can't be detected
+    #     reliably, so keep the session language for those.
+    stripped = body.strip()
+    if stripped.isdigit() or len(stripped.split()) <= 1:
+        lang = session.language or "en"
+    else:
+        detected_lang = detect_user_language(body)
+        lang = _get_lang(session, detected_lang)
+        if lang != session.language:
+            session_store.set_language(from_number, lang)
+            session.language = lang
+    logger.info("WA language: from=%s effective=%s", from_number, lang)
 
     # 3a. Check if we're awaiting email verification (account security)
     if session.awaiting_email_verification:
