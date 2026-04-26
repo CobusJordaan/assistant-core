@@ -15,11 +15,19 @@ from whatsapp_menu import (
     render_invalid_selection,
     SUPPORT_CATEGORIES,
 )
+from whatsapp_i18n import t
 from language_detect import detect_user_language
 
 logger = logging.getLogger("assistant-core.wa-handler")
 
 FALLBACK_REPLY = "Sorry, something went wrong. Please try again in a moment."
+
+
+def _get_lang(session, detected_lang: str) -> str:
+    """Return the effective language: current detection wins, session is fallback."""
+    if detected_lang in ("af", "en"):
+        return detected_lang
+    return session.language or "en"
 
 
 async def handle_whatsapp_message(
@@ -41,29 +49,30 @@ async def handle_whatsapp_message(
     # 2. Load or create session (auto-resets after 30 min inactivity)
     session = session_store.get_or_create(from_number, client_id, client_name)
 
-    # 2b. Detect and store language preference
+    # 2b. Detect language — current message wins, session is fallback
     detected_lang = detect_user_language(body)
-    if detected_lang != session.language:
-        session_store.set_language(from_number, detected_lang)
-        session.language = detected_lang
-    logger.info("WA language: from=%s detected=%s", from_number, detected_lang)
+    lang = _get_lang(session, detected_lang)
+    if lang != session.language:
+        session_store.set_language(from_number, lang)
+        session.language = lang
+    logger.info("WA language: from=%s detected=%s effective=%s", from_number, detected_lang, lang)
 
     # 3a. Check if we're awaiting email verification (account security)
     if session.awaiting_email_verification:
         return await _handle_email_verification(
-            session_store, session, from_number, body
+            session_store, session, from_number, body, lang
         )
 
     # 3b. Check if we're awaiting account number/name input
     if session.awaiting_account_lookup:
         return await _handle_account_lookup(
-            session_store, session, from_number, body
+            session_store, session, from_number, body, lang
         )
 
     # 3c. Check if we're awaiting a support ticket description
     if session.awaiting_support_description:
         return await _handle_support_description(
-            session_store, session, from_number, body, client_name
+            session_store, session, from_number, body, client_name, lang
         )
 
     # 4. Check for menu selection BEFORE intent classification
@@ -73,14 +82,14 @@ async def handle_whatsapp_message(
 
     if menu_result:
         return await _handle_menu_selection(
-            session_store, session, from_number, body, client_name, menu_result
+            session_store, session, from_number, body, client_name, menu_result, lang
         )
 
     # 5. Classify intent via natural language
     intent = classify_whatsapp_intent(body)
     logger.info(
-        "WA intent: from=%s action=%s conf=%.2f msg=%s",
-        from_number, intent.action, intent.confidence, body[:80],
+        "WA intent: from=%s action=%s conf=%.2f lang=%s msg=%s",
+        from_number, intent.action, intent.confidence, lang, body[:80],
     )
 
     # 6. Build reply
@@ -88,7 +97,7 @@ async def handle_whatsapp_message(
 
     # 6a. Greeting on first message in session → show main menu
     if session.needs_greeting:
-        greeting_menu = render_main_menu(client_name)
+        greeting_menu = render_main_menu(client_name, lang)
         reply_parts.append(greeting_menu)
         session_store.mark_greeted(from_number)
         session_store.set_menu(from_number, "main_menu")
@@ -101,7 +110,7 @@ async def handle_whatsapp_message(
 
     # 6b. Repeated greeting within active session → show menu again
     if intent.action == "greeting" and not session.needs_greeting:
-        reply = render_main_menu(client_name)
+        reply = render_main_menu(client_name, lang)
         session_store.set_menu(from_number, "main_menu")
         logger.info("Menu shown: main_menu (re-greeting) for %s", from_number)
         session_store.update_after_reply(from_number, body, reply)
@@ -109,7 +118,7 @@ async def handle_whatsapp_message(
 
     # 6c. Unknown intent → show menu
     if intent.action == "unknown":
-        reply = render_main_menu(client_name)
+        reply = render_main_menu(client_name, lang)
         session_store.set_menu(from_number, "main_menu")
         logger.info("Menu shown: main_menu (unknown intent) for %s", from_number)
         session_store.update_after_reply(from_number, body, reply)
@@ -117,7 +126,7 @@ async def handle_whatsapp_message(
 
     # 6d. Support intent via NL → show support category menu
     if intent.action == "support_intake":
-        reply = render_support_menu()
+        reply = render_support_menu(lang)
         session_store.clear_menu(from_number)
         session_store.set_menu(from_number, "support_menu")
         logger.info("Menu shown: support_menu (NL intent) for %s", from_number)
@@ -133,7 +142,7 @@ async def handle_whatsapp_message(
         session_store.set_awaiting_account_lookup(from_number)
 
     # 8. Format the action reply
-    action_reply = format_wa_reply(result, client_name)
+    action_reply = format_wa_reply(result, client_name, lang)
 
     # 9. Combine greeting + action if this is the first message with an intent
     if reply_parts:
@@ -145,7 +154,7 @@ async def handle_whatsapp_message(
 
     # 10. Avoid repeating identical replies (unless user repeated the same question)
     if reply == session.last_reply:
-        reply = "I just sent you that info. Is there anything else I can help with?"
+        reply = t(lang, "repeat_reply")
 
     # 11. Update session
     session_store.update_after_reply(from_number, body, reply)
@@ -160,13 +169,14 @@ async def _handle_menu_selection(
     body: str,
     client_name: str,
     menu_result: dict,
+    lang: str,
 ) -> str:
     """Handle a resolved menu selection."""
     action = menu_result["action"]
 
     # Invalid selection → re-show the menu
     if action == "_invalid_selection":
-        reply = render_invalid_selection(menu_result["menu_key"])
+        reply = render_invalid_selection(menu_result["menu_key"], lang)
         logger.info("Invalid menu selection '%s' for %s, re-showing %s",
                      body.strip(), from_number, menu_result["menu_key"])
         session_store.update_after_reply(from_number, body, reply)
@@ -174,7 +184,7 @@ async def _handle_menu_selection(
 
     # Sub-menu: document menu
     if action == "_document_menu":
-        reply = render_document_menu()
+        reply = render_document_menu(lang)
         session_store.set_menu(from_number, "document_menu")
         logger.info("Menu shown: document_menu for %s (from selection '%s')",
                      from_number, body.strip())
@@ -183,7 +193,7 @@ async def _handle_menu_selection(
 
     # Sub-menu: support menu
     if action == "_support_menu":
-        reply = render_support_menu()
+        reply = render_support_menu(lang)
         session_store.set_menu(from_number, "support_menu")
         logger.info("Menu shown: support_menu for %s (from selection '%s')",
                      from_number, body.strip())
@@ -195,10 +205,7 @@ async def _handle_menu_selection(
         cat = SUPPORT_CATEGORIES[action]
         session_store.clear_menu(from_number)
         session_store.set_support_category(from_number, cat["key"])
-        reply = (
-            f"*{cat['label']}* \u2014 got it.\n\n"
-            "Please describe your issue briefly and I'll create a support ticket for you."
-        )
+        reply = t(lang, "support_category_selected", label=cat["label"])
         logger.info("Support category '%s' selected by %s, awaiting description",
                      cat["key"], from_number)
         session_store.update_after_reply(from_number, body, reply)
@@ -216,11 +223,11 @@ async def _handle_menu_selection(
     if result.needs_client:
         session_store.set_awaiting_account_lookup(from_number)
 
-    reply = format_wa_reply(result, client_name)
+    reply = format_wa_reply(result, client_name, lang)
 
     # Avoid repeating identical replies
     if reply == session.last_reply:
-        reply = "I just sent you that info. Is there anything else I can help with?"
+        reply = t(lang, "repeat_reply")
 
     session_store.update_after_reply(from_number, body, reply)
     return reply
@@ -232,6 +239,7 @@ async def _handle_support_description(
     from_number: str,
     body: str,
     client_name: str,
+    lang: str,
 ) -> str:
     """User sent a description for their support ticket — create it."""
     category = session.support_category or "general"
@@ -261,27 +269,16 @@ async def _handle_support_description(
 
         if result.get("success"):
             ticket_number = result.get("ticket_number", "")
-            reply = (
-                f"Your support ticket *#{ticket_number}* has been created.\n"
-                f"Category: {subject}\n\n"
-                "Our team will follow up with you shortly. "
-                "Is there anything else I can help with?"
-            )
+            reply = t(lang, "support_ticket_created", ticket=ticket_number, category=subject)
             logger.info("Support ticket %s created for %s (category=%s)",
                         ticket_number, from_number, category)
         else:
             error = result.get("error", "unknown")
             logger.error("Failed to create support ticket for %s: %s", from_number, error)
-            reply = (
-                "I'm sorry, I couldn't create the ticket right now. "
-                "Please try again in a moment, or contact us directly for support."
-            )
+            reply = t(lang, "support_ticket_failed")
     except Exception as e:
         logger.error("Support ticket creation error for %s: %s", from_number, e, exc_info=True)
-        reply = (
-            "I'm sorry, something went wrong creating your ticket. "
-            "Please try again in a moment."
-        )
+        reply = t(lang, "support_ticket_error")
 
     session_store.update_after_reply(from_number, body, reply)
     return reply
@@ -306,6 +303,7 @@ async def _handle_account_lookup(
     session,
     from_number: str,
     body: str,
+    lang: str,
 ) -> str:
     """User sent an account number or name — look it up and ask for email verification."""
     query = body.strip()
@@ -313,7 +311,7 @@ async def _handle_account_lookup(
     # Allow user to bail out
     if query.lower() in ("menu", "hi", "hello", "cancel", "0"):
         session_store.clear_account_lookup_state(from_number)
-        reply = render_main_menu("")
+        reply = render_main_menu("", lang)
         session_store.set_menu(from_number, "main_menu")
         session_store.update_after_reply(from_number, body, reply)
         return reply
@@ -324,7 +322,7 @@ async def _handle_account_lookup(
     except Exception as e:
         logger.error("Account lookup error for %s: %s", from_number, e, exc_info=True)
         session_store.clear_account_lookup_state(from_number)
-        reply = "Sorry, I couldn't search for that right now. Please try again in a moment."
+        reply = t(lang, "lookup_error")
         session_store.update_after_reply(from_number, body, reply)
         return reply
 
@@ -340,34 +338,24 @@ async def _handle_account_lookup(
             session_store.set_awaiting_email_verification(from_number, client_id, client_name, "")
             session_store.confirm_client(from_number)
             reply = (
-                f"\u2705 Account *{client_number}* ({client_name}) linked.\n\n"
-                + render_main_menu(client_name)
+                t(lang, "lookup_linked", number=client_number, name=client_name)
+                + render_main_menu(client_name, lang)
             )
             session_store.set_menu(from_number, "main_menu")
             logger.info("Account %s linked for %s (no email, auto-confirmed)", client_number, from_number)
         else:
             masked = _mask_email(email)
             session_store.set_awaiting_email_verification(from_number, client_id, client_name, email)
-            reply = (
-                f"I found account *{client_number}* ({client_name}).\n\n"
-                f"For security, please confirm the email address on this account.\n"
-                f"Hint: {masked}"
-            )
+            reply = t(lang, "lookup_verify_email", number=client_number, name=client_name, masked=masked)
             logger.info("Account %s found for %s, awaiting email verification", client_number, from_number)
 
         session_store.update_after_reply(from_number, body, reply)
         return reply
 
     if len(clients) > 1:
-        reply = (
-            f"I found {len(clients)} accounts matching that. "
-            "Could you share your account number? It usually starts with *DRA*."
-        )
+        reply = t(lang, "lookup_multiple", count=len(clients))
     else:
-        reply = (
-            "I couldn't find an account matching that. "
-            "Please check and try again, or type *menu* to go back."
-        )
+        reply = t(lang, "lookup_none")
 
     session_store.update_after_reply(from_number, body, reply)
     return reply
@@ -378,6 +366,7 @@ async def _handle_email_verification(
     session,
     from_number: str,
     body: str,
+    lang: str,
 ) -> str:
     """User sent an email to verify their identity — compare against pending client."""
     input_email = body.strip().lower()
@@ -388,8 +377,8 @@ async def _handle_email_verification(
         first_name = name.split()[0] if name else "there"
         session_store.confirm_client(from_number)
         reply = (
-            f"\u2705 Verified! Welcome, {first_name}.\n\n"
-            + render_main_menu(name)
+            t(lang, "email_verified", name=first_name)
+            + render_main_menu(name, lang)
         )
         session_store.set_menu(from_number, "main_menu")
         logger.info("Email verified for %s — client linked: %s", from_number, name)
@@ -398,11 +387,7 @@ async def _handle_email_verification(
 
     # Failed verification — clear state
     session_store.clear_account_lookup_state(from_number)
-    reply = (
-        "That doesn't match the email on this account. "
-        "For security, I can't provide account information.\n\n"
-        "Please send *Hi* to try again."
-    )
+    reply = t(lang, "email_failed")
     logger.info("Email verification failed for %s", from_number)
     session_store.update_after_reply(from_number, body, reply)
     return reply

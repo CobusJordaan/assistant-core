@@ -7,6 +7,8 @@ Menus are stored in session state and resolved before intent classification.
 import logging
 from datetime import datetime, timezone, timedelta
 
+from whatsapp_i18n import t
+
 logger = logging.getLogger("assistant-core.wa-menu")
 
 # Menu timeout — same as session timeout
@@ -62,7 +64,22 @@ _MENU_REGISTRY = {
 # Rendering
 # ---------------------------------------------------------------------------
 
-def render_menu(menu_key: str, preamble: str = "") -> str:
+# i18n label keys per menu
+_MENU_LABEL_KEYS = {
+    "main_menu": {
+        "1": "main_menu_1", "2": "main_menu_2", "3": "main_menu_3",
+        "4": "main_menu_4", "5": "main_menu_5",
+    },
+    "document_menu": {
+        "1": "document_menu_1", "2": "document_menu_2",
+    },
+    "support_menu": {
+        "1": "support_menu_1", "2": "support_menu_2", "3": "support_menu_3",
+    },
+}
+
+
+def render_menu(menu_key: str, preamble: str = "", lang: str = "en") -> str:
     """Render a numbered menu as WhatsApp-friendly text.
 
     Returns the preamble (if any) followed by numbered options.
@@ -71,38 +88,41 @@ def render_menu(menu_key: str, preamble: str = "") -> str:
     if not menu:
         return preamble
 
+    label_keys = _MENU_LABEL_KEYS.get(menu_key, {})
+
     lines = []
     if preamble:
         lines.append(preamble)
         lines.append("")
     for num, opt in menu["options"].items():
-        lines.append(f"*{num}.* {opt['label']}")
+        label = t(lang, label_keys[num]) if num in label_keys else opt["label"]
+        lines.append(f"*{num}.* {label}")
     return "\n".join(lines)
 
 
-def render_main_menu(client_name: str = "") -> str:
+def render_main_menu(client_name: str = "", lang: str = "en") -> str:
     """Render the main greeting menu with personalised preamble."""
     first = client_name.strip().split()[0] if client_name.strip() else ""
     if first:
-        preamble = f"Hi {first} \U0001f44b How can I help with your account today?"
+        preamble = t(lang, "main_menu_greeting", name=first)
     else:
-        preamble = "Hi \U0001f44b How can I help with your account today?"
-    return render_menu("main_menu", preamble)
+        preamble = t(lang, "main_menu_greeting_anon")
+    return render_menu("main_menu", preamble, lang)
 
 
-def render_invalid_selection(menu_key: str) -> str:
+def render_invalid_selection(menu_key: str, lang: str = "en") -> str:
     """Render a 'didn't recognise that' message with the current menu."""
-    return render_menu(menu_key, "I didn't recognise that option. Please reply with:")
+    return render_menu(menu_key, t(lang, "invalid_selection"), lang)
 
 
-def render_document_menu() -> str:
+def render_document_menu(lang: str = "en") -> str:
     """Render the document sub-menu."""
-    return render_menu("document_menu", "Sure \u2014 what would you like me to send?")
+    return render_menu("document_menu", t(lang, "document_menu_preamble"), lang)
 
 
-def render_support_menu() -> str:
+def render_support_menu(lang: str = "en") -> str:
     """Render the support category sub-menu."""
-    return render_menu("support_menu", "What kind of issue are you experiencing?")
+    return render_menu("support_menu", t(lang, "support_menu_preamble"), lang)
 
 
 # ---------------------------------------------------------------------------

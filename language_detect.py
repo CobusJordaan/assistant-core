@@ -17,30 +17,40 @@ SYSTEM_PROMPT_AF = (
 # Strong multi-word phrases → immediate "af" (highest priority)
 _STRONG_PHRASES = [
     "hoe gaan dit",
-    "my internet werk nie",
+    "kan jy",
+    "kan julle",
+    "dalk help",
+    "my dalk help",
     "help my",
     "wys my",
     "stuur vir my",
-    "kan jy",
     "ek wil",
     "ek soek",
     "my rekening",
     "my faktuur",
+    "my fakture",
+    "my staat",
+    "wat skuld ek",
+    "wat is my balans",
+    "wat is my saldo",
     "wat is my",
     "waar is my",
-    "ek het",
-    "ek kan nie",
+    "my internet werk nie",
     "dit werk nie",
+    "ek kan nie",
+    "ek het",
 ]
 
 # Single Afrikaans keywords — count hits, >= 2 → "af"
 _AF_WORDS = {
-    "ek", "jy", "jou", "ons", "hulle",
+    "ek", "jy", "jou", "julle", "ons", "hulle",
     "wat", "waar", "wanneer", "hoe", "hoeveel",
-    "rekening", "faktuur", "betaling", "saldo",
-    "oopstaande", "agterstallig", "kliënt", "diens", "internet",
+    "rekening", "faktuur", "fakture", "staat",
+    "betaling", "betaal", "saldo", "balans",
+    "oopstaande", "agterstallig", "kliënt", "klient",
+    "diens", "internet", "ondersteuning",
     "nie", "gaan", "het", "is", "was", "sal", "moet", "kan",
-    "met", "vir", "van", "die", "dit",
+    "met", "vir", "van", "die", "dit", "dalk",
 }
 
 

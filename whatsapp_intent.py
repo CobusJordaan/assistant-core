@@ -36,7 +36,9 @@ _p(
     r"balance|how much do i owe|what do i owe|what.?s my balance|"
     r"my balance|account balance|outstanding amount|amount owing|"
     r"amount due|check.?my.?balance|owe you|how much must i pay|"
-    r"wat skuld ek|hoeveel skuld"
+    r"wat skuld ek|hoeveel skuld|balans|saldo|"
+    r"wat is my balans|wat is my saldo|"
+    r"oop fakture|onbetaalde fakture|uitstaande fakture|agterstallig"
     r")\b",
     "balance_check", 0.90,
 )
@@ -48,7 +50,9 @@ _p(
     r"invoices?\s+(that\s+are\s+|still\s+)?unpaid|"
     r"which invoices?|open invoices?|invoices?\s+due|"
     r"invoices?\s+outstanding|list\s+invoices?|"
-    r"my invoices?|show\s+invoices?"
+    r"my invoices?|show\s+invoices?|"
+    r"oop fakture|onbetaalde fakture|uitstaande fakture|"
+    r"wys.{0,10}fakture|my fakture"
     r")\b",
     "unpaid_invoices", 0.90,
 )
@@ -59,7 +63,9 @@ _p(
     r"my account|account\s+(summary|overview|details|info)|"
     r"client summary|account details|my details|my info|"
     r"tell me about my account|"
-    r"my services?|what package|what plan|my package|my plan"
+    r"my services?|what package|what plan|my package|my plan|"
+    r"rekening\s*opsomming|rekeningopsomming|opsomming|"
+    r"my rekening|rekening\s*detail|rekening\s*besonderhede"
     r")\b",
     "client_summary", 0.85,
 )
@@ -71,7 +77,9 @@ _p(
     r"invoice.{0,15}(link|pdf|copy|resend|again)|"
     r"get.{0,10}invoice|need.{0,10}invoice|"
     r"can i (get|have|see).{0,10}invoice|"
-    r"latest invoice|last invoice|recent invoice"
+    r"latest invoice|last invoice|recent invoice|"
+    r"stuur.{0,10}faktuur|wys.{0,10}faktuur|my faktuur|"
+    r"faktuur|rekeningstaat"
     r")\b",
     "send_invoice_link", 0.85,
 )
@@ -83,7 +91,8 @@ _p(
     r"statement.{0,15}(link|pdf|copy|resend)|"
     r"get.{0,10}statement|need.{0,10}statement|"
     r"can i (get|have|see).{0,10}statement|"
-    r"my statement|account statement"
+    r"my statement|account statement|"
+    r"stuur.{0,10}staat|wys.{0,10}staat|my staat|staat"
     r")\b",
     "send_statement_link", 0.85,
 )
@@ -109,7 +118,10 @@ _p(
     r"wifi.{0,10}(slow|down|not working|problem)|"
     r"speed.{0,10}(slow|issue|problem|bad|terrible)|"
     r"can.?t connect|no internet|offline|"
-    r"network.{0,10}(down|issue|problem)"
+    r"network.{0,10}(down|issue|problem)|"
+    r"internet werk nie|geen internet|internet.{0,10}stadig|"
+    r"lyn af|konneksie|konneksietoets|verbinding|"
+    r"toets my lyn|check my lyn|internet toets"
     r")\b",
     "latency_check", 0.80,
 )
@@ -118,7 +130,8 @@ _p(
 _p(
     r"\b("
     r"support|complaint|something.?s? wrong|broken|fault|"
-    r"technical|trouble|struggling"
+    r"technical|trouble|struggling|"
+    r"ondersteuning|probleem|help"
     r")\b",
     "support_intake", 0.60,
 )
@@ -129,8 +142,9 @@ _p(
 # ---------------------------------------------------------------------------
 
 _GREETING_RE = re.compile(
-    r"^(hi|hello|hey|howzit|hallo|good\s*(morning|afternoon|evening)|"
-    r"sup|yo|g.?day|greetings?|hola|bonjour)"
+    r"^(hi|hello|hey|howzit|hallo|goeie\s*(more|middag|naand)|good\s*(morning|afternoon|evening)|"
+    r"sup|yo|g.?day|greetings?|hola|bonjour|"
+    r"haai|hoi|m\u00f4re|dag)"
     r"\s*[!.,\U0001f44b\U0001f600-\U0001f64f]*\s*$",
     re.IGNORECASE,
 )
