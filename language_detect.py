@@ -14,8 +14,9 @@ SYSTEM_PROMPT_AF = (
     "Use English technical terms only where commonly used in South Africa."
 )
 
-# Strong multi-word phrases → immediate "af"
+# Strong multi-word phrases → immediate "af" (highest priority)
 _STRONG_PHRASES = [
+    "hoe gaan dit",
     "my internet werk nie",
     "help my",
     "wys my",
@@ -25,18 +26,21 @@ _STRONG_PHRASES = [
     "ek soek",
     "my rekening",
     "my faktuur",
+    "wat is my",
+    "waar is my",
+    "ek het",
+    "ek kan nie",
+    "dit werk nie",
 ]
 
 # Single Afrikaans keywords — count hits, >= 2 → "af"
 _AF_WORDS = {
-    "ek", "jy", "jou", "julle", "ons", "hulle",
-    "wat", "waar", "wanneer", "hoekom", "hoeveel",
-    "asseblief", "dankie",
-    "rekening", "faktuur", "fakture", "staat",
-    "betaling", "betaal", "saldo", "oopstaande", "agterstallig",
-    "kliënt", "klient", "diens", "internet", "ondersteuning",
-    "nie", "gaan", "het", "was", "sal", "moet", "kan",
-    "met", "vir", "van", "die",
+    "ek", "jy", "jou", "ons", "hulle",
+    "wat", "waar", "wanneer", "hoe", "hoeveel",
+    "rekening", "faktuur", "betaling", "saldo",
+    "oopstaande", "agterstallig", "kliënt", "diens", "internet",
+    "nie", "gaan", "het", "is", "was", "sal", "moet", "kan",
+    "met", "vir", "van", "die", "dit",
 }
 
 
@@ -44,6 +48,7 @@ def detect_user_language(text: str) -> str:
     """Detect whether *text* is Afrikaans or English.
 
     Returns ``"af"`` or ``"en"``.
+    Afrikaans always takes priority over English in mixed sentences.
     """
     lower = text.lower().strip()
     if not lower:
@@ -57,6 +62,11 @@ def detect_user_language(text: str) -> str:
     # 2. Count Afrikaans word hits
     words = lower.split()
     hits = sum(1 for w in words if w.strip(".,!?;:'\"()") in _AF_WORDS)
+
+    # Bias: question with any Afrikaans word → boost score
+    if "?" in lower and hits >= 1:
+        hits += 1
+
     if hits >= 2:
         return "af"
 
