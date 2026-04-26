@@ -149,7 +149,7 @@ async def handle_whatsapp_message(
 
     # 7. Execute action (natural language matched — clear any active menu)
     session_store.clear_menu(from_number)
-    result = await execute_action(intent, session.client_id, session.client_name, from_number)
+    result = await execute_action(intent, session.client_id, session.client_name, from_number, lang)
 
     # 7a. If client is needed, set the account lookup flag
     if result.needs_client:
@@ -248,7 +248,7 @@ async def _handle_menu_selection(
                 body.strip(), action, from_number)
 
     intent = WhatsAppIntent(action=action, confidence=1.0, raw_message=body)
-    result = await execute_action(intent, session.client_id, session.client_name, from_number)
+    result = await execute_action(intent, session.client_id, session.client_name, from_number, lang)
 
     # If client is needed, set the account lookup flag
     if result.needs_client:

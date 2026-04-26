@@ -40,7 +40,8 @@ _HINT_MAP = {
 
 async def execute_action(intent: WhatsAppIntent, client_id: int | None,
                          client_name: str = "",
-                         from_number: str = "") -> ActionResult:
+                         from_number: str = "",
+                         lang: str = "en") -> ActionResult:
     """Execute the CRM/tool action for a classified intent."""
     action = intent.action
 
@@ -57,7 +58,7 @@ async def execute_action(intent: WhatsAppIntent, client_id: int | None,
                     action=action, success=False, error="no_client",
                     needs_client=True, display_hint=_HINT_MAP.get(action, "unknown"),
                 )
-            return await _execute_client_action(action, client_id, from_number)
+            return await _execute_client_action(action, client_id, from_number, lang)
 
         # --- Latency check ---
         if action == "latency_check":
@@ -92,7 +93,8 @@ async def execute_action(intent: WhatsAppIntent, client_id: int | None,
 # ---------------------------------------------------------------------------
 
 async def _execute_client_action(action: str, client_id: int,
-                                 from_number: str = "") -> ActionResult:
+                                 from_number: str = "",
+                                 lang: str = "en") -> ActionResult:
     """Run a billing API call that requires client context."""
 
     if action == "balance_check":
@@ -121,7 +123,7 @@ async def _execute_client_action(action: str, client_id: int,
 
     if action == "send_invoice_link":
         try:
-            result = billing_client.send_invoice_whatsapp(client_id, phone_number=from_number)
+            result = billing_client.send_invoice_whatsapp(client_id, phone_number=from_number, language=lang)
             # "no_unpaid_invoices" is not a failure — it's valid info
             is_ok = result.get("success", False) or result.get("error") == "no_unpaid_invoices"
             return ActionResult(
@@ -138,7 +140,7 @@ async def _execute_client_action(action: str, client_id: int,
 
     if action == "send_statement_link":
         try:
-            result = billing_client.send_statement_whatsapp(client_id, phone_number=from_number)
+            result = billing_client.send_statement_whatsapp(client_id, phone_number=from_number, language=lang)
             return ActionResult(
                 action=action, success=result.get("success", False),
                 data=result, error=result.get("error"),

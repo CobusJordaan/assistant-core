@@ -106,12 +106,15 @@ class BillingClient:
         resp.raise_for_status()
         return resp.json()
 
-    def send_invoice_whatsapp(self, client_id: int, phone_number: str = "") -> dict:
+    def send_invoice_whatsapp(self, client_id: int, phone_number: str = "",
+                              language: str = "") -> dict:
         """Send the latest unpaid invoice to a client via WhatsApp."""
         self._check_configured()
         payload = {"client_id": client_id}
         if phone_number:
             payload["phone_number"] = phone_number
+        if language:
+            payload["language"] = language
         resp = httpx.post(
             f"{self.base_url}/api/assistant/send-invoice-whatsapp",
             json=payload,
@@ -120,12 +123,15 @@ class BillingClient:
         )
         return resp.json()
 
-    def send_statement_whatsapp(self, client_id: int, phone_number: str = "") -> dict:
+    def send_statement_whatsapp(self, client_id: int, phone_number: str = "",
+                                language: str = "") -> dict:
         """Send a statement to a client via WhatsApp."""
         self._check_configured()
         payload = {"client_id": client_id}
         if phone_number:
             payload["phone_number"] = phone_number
+        if language:
+            payload["language"] = language
         resp = httpx.post(
             f"{self.base_url}/api/assistant/send-statement-whatsapp",
             json=payload,
