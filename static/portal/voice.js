@@ -140,7 +140,8 @@
     function startBrowserSTT() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         recognition = new SpeechRecognition();
-        recognition.lang = 'en-US';
+        const langMode = getLanguageMode();
+        recognition.lang = langMode === 'af' ? 'af-ZA' : langMode === 'en' ? 'en-US' : 'en-ZA';
         recognition.interimResults = true;
         recognition.continuous = false; // non-continuous — stops faster on silence
         recognition.maxAlternatives = 1;
@@ -292,6 +293,7 @@
                 body: JSON.stringify({
                     transcript: text,
                     conversation_id: activeConvId || null,
+                    language: getLanguageMode(),
                 }),
             });
 

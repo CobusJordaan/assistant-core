@@ -4,6 +4,15 @@ let currentConvId = activeConvId;
 let isStreaming = false;
 let pendingImages = []; // {dataUrl, name}
 
+function getLanguageMode() {
+    return localStorage.getItem('draadloze_ai_language_mode') || 'auto';
+}
+function setLanguageMode(val) {
+    localStorage.setItem('draadloze_ai_language_mode', val);
+    const sel = document.getElementById('lang-select');
+    if (sel) sel.value = val;
+}
+
 // ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
@@ -19,6 +28,9 @@ document.addEventListener('DOMContentLoaded', () => {
         scrollToBottom();
     }
     document.getElementById('chat-input').focus();
+    // Restore language selector
+    const sel = document.getElementById('lang-select');
+    if (sel) sel.value = getLanguageMode();
 });
 
 // ---------------------------------------------------------------------------
@@ -133,6 +145,7 @@ async function sendMessage() {
         const payload = {
             message: message,
             conversation_id: currentConvId,
+            language: getLanguageMode(),
         };
         if (images.length > 0) {
             payload.images = images.map(img => img.dataUrl);

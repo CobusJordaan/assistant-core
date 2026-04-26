@@ -40,6 +40,7 @@ _MENU_COLUMNS = [
     ("pending_client_name", "TEXT DEFAULT ''"),
     ("pending_client_email", "TEXT DEFAULT ''"),
     ("manually_linked", "INTEGER DEFAULT 0"),
+    ("language", "TEXT DEFAULT ''"),
 ]
 
 
@@ -53,7 +54,7 @@ class WhatsAppSession:
         "support_category", "awaiting_support_description",
         "awaiting_account_lookup", "awaiting_email_verification",
         "pending_client_id", "pending_client_name", "pending_client_email",
-        "manually_linked",
+        "manually_linked", "language",
         "created_at", "updated_at",
     )
 
@@ -68,7 +69,8 @@ class WhatsAppSession:
                  pending_client_id: int | None = None,
                  pending_client_name: str = "",
                  pending_client_email: str = "",
-                 manually_linked: bool = False):
+                 manually_linked: bool = False,
+                 language: str = ""):
         self.from_number = from_number
         self.client_id = client_id
         self.client_name = client_name
@@ -86,6 +88,7 @@ class WhatsAppSession:
         self.pending_client_name = pending_client_name
         self.pending_client_email = pending_client_email
         self.manually_linked = manually_linked
+        self.language = language
         self.created_at = created_at
         self.updated_at = updated_at
 
@@ -268,6 +271,15 @@ class WhatsAppSessionStore:
         )
         self._conn.commit()
 
+    def set_language(self, from_number: str, lang: str):
+        """Store detected language preference for this session."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            "UPDATE whatsapp_sessions SET language = ?, updated_at = ? WHERE from_number = ?",
+            (lang, now, from_number),
+        )
+        self._conn.commit()
+
     def update_after_reply(self, from_number: str, user_message: str, reply: str):
         """Update session after processing: bump timestamps, store reply, append history."""
         now = datetime.now(timezone.utc).isoformat()
@@ -315,6 +327,7 @@ class WhatsAppSessionStore:
                    awaiting_account_lookup = 0, awaiting_email_verification = 0,
                    pending_client_id = NULL, pending_client_name = '',
                    pending_client_email = '', manually_linked = 0,
+                   language = '',
                    updated_at = ?
                WHERE from_number = ?""",
             (client_id, client_name, now, now, from_number),
@@ -343,4 +356,5 @@ class WhatsAppSessionStore:
             pending_client_name=row["pending_client_name"] or "",
             pending_client_email=row["pending_client_email"] or "",
             manually_linked=bool(row["manually_linked"]) if row["manually_linked"] is not None else False,
+            language=row["language"] or "",
         )

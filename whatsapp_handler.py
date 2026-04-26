@@ -15,6 +15,7 @@ from whatsapp_menu import (
     render_invalid_selection,
     SUPPORT_CATEGORIES,
 )
+from language_detect import detect_user_language
 
 logger = logging.getLogger("assistant-core.wa-handler")
 
@@ -39,6 +40,13 @@ async def handle_whatsapp_message(
 
     # 2. Load or create session (auto-resets after 30 min inactivity)
     session = session_store.get_or_create(from_number, client_id, client_name)
+
+    # 2b. Detect and store language preference
+    detected_lang = detect_user_language(body)
+    if detected_lang != session.language:
+        session_store.set_language(from_number, detected_lang)
+        session.language = detected_lang
+    logger.info("WA language: from=%s detected=%s", from_number, detected_lang)
 
     # 3a. Check if we're awaiting email verification (account security)
     if session.awaiting_email_verification:

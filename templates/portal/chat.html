@@ -32,6 +32,13 @@
                 {% endfor %}
             </div>
             <div class="sidebar-footer">
+                <div class="lang-row">
+                    <select id="lang-select" class="lang-select" onchange="setLanguageMode(this.value)">
+                        <option value="auto">Auto</option>
+                        <option value="en">English</option>
+                        <option value="af">Afrikaans</option>
+                    </select>
+                </div>
                 <span class="user-name">{{ session.display_name }}</span>
                 <a href="/portal/logout" class="btn-logout">Log out</a>
             </div>

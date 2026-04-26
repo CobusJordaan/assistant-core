@@ -21,6 +21,7 @@ from portal.auth import (
     create_portal_session, get_portal_session, refresh_portal_session,
     clear_portal_session,
 )
+from language_detect import detect_user_language, get_system_prompt
 
 logger = logging.getLogger("portal")
 
@@ -28,7 +29,6 @@ router = APIRouter(prefix="/portal", tags=["portal"])
 templates = Jinja2Templates(directory="templates")
 
 AI_ROUTER_URL = "http://127.0.0.1:5100"
-SYSTEM_PROMPT = "You are Draadloze AI, a helpful assistant for a family environment."
 DEFAULT_VISION_PROMPT = "Please summarize this image clearly. If it contains text, extract and explain the important parts."
 MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 MAX_IMAGES_PER_MSG = 4
@@ -189,6 +189,7 @@ async def api_chat(request: Request):
     message = body.get("message", "").strip()
     conv_id = body.get("conversation_id")
     images = body.get("images", [])  # list of data URI strings
+    language_mode = body.get("language", "auto")
 
     if not message and not images:
         return JSONResponse(status_code=400, content={"error": "Empty message"})
@@ -255,9 +256,15 @@ async def api_chat(request: Request):
     db.add_message(conv_id, "user", message)
     db.increment_usage(user_id, today, messages=1)
 
+    # Detect language
+    if language_mode in ("af", "en"):
+        detected_lang = language_mode
+    else:
+        detected_lang = detect_user_language(message)
+
     # Build messages for AI Router (include history)
     history = db.get_messages(conv_id)
-    ai_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    ai_messages = [{"role": "system", "content": get_system_prompt(detected_lang)}]
     for msg in history:
         ai_messages.append({"role": msg["role"], "content": msg["content"]})
 
@@ -275,16 +282,19 @@ async def api_chat(request: Request):
 
     # Stream response from AI Router
     return StreamingResponse(
-        _stream_chat(db, conv_id, user_id, today, ai_messages),
+        _stream_chat(db, conv_id, user_id, today, ai_messages, detected_lang),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Conversation-Id": str(conv_id)},
     )
 
 
-async def _stream_chat(db, conv_id: int, user_id: int, today: str, messages: list):
+async def _stream_chat(db, conv_id: int, user_id: int, today: str, messages: list, detected_lang: str = "en"):
     """Stream AI Router response as SSE to the browser."""
     full_response = ""
     image_url = ""
+
+    # Emit detected language as the first SSE event
+    yield f"data: {json.dumps({'detected_language': detected_lang})}\n\n"
 
     try:
         timeouts = httpx.Timeout(connect=10.0, read=300.0, write=10.0, pool=10.0)
@@ -491,6 +501,7 @@ async def api_voice(request: Request):
     body = await request.json()
     transcript = body.get("transcript", "").strip()
     conv_id = body.get("conversation_id")
+    language_mode = body.get("language", "auto")
 
     if not transcript:
         return JSONResponse(status_code=400, content={"error": "Empty transcript"})
@@ -516,13 +527,19 @@ async def api_voice(request: Request):
     db.add_message(conv_id, "user", transcript)
     db.increment_usage(user_id, today, messages=1)
 
+    # Detect language from transcript
+    if language_mode in ("af", "en"):
+        detected_lang = language_mode
+    else:
+        detected_lang = detect_user_language(transcript)
+
     # Build messages for AI Router
     history = db.get_messages(conv_id)
-    ai_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    ai_messages = [{"role": "system", "content": get_system_prompt(detected_lang)}]
     for msg in history:
         ai_messages.append({"role": msg["role"], "content": msg["content"]})
 
-    logger.info("Voice request: user=%s, transcript_len=%d, conv=%d", session["user"], len(transcript), conv_id)
+    logger.info("Voice request: user=%s, transcript_len=%d, conv=%d, lang=%s", session["user"], len(transcript), conv_id, detected_lang)
 
     # Call AI Router (non-streaming for voice)
     reply_text = ""
@@ -555,7 +572,10 @@ async def api_voice(request: Request):
     # Generate TTS audio — clean markdown and limit length for speech
     audio_url = ""
     tts_url = voice_cfg.get("tts_piper_url", "http://127.0.0.1:5400")
-    tts_voice = voice_cfg.get("tts_voice", "en_US-lessac-medium")
+    if detected_lang == "af":
+        tts_voice = voice_cfg.get("tts_afrikaans_voice", "af-ZA-AdriNeural")
+    else:
+        tts_voice = voice_cfg.get("tts_voice", "en_US-lessac-medium")
     audio_dir = voice_cfg.get("voice_audio_dir", "/opt/ai-assistant/data/portal/audio")
 
     # Strip markdown formatting for cleaner speech
@@ -608,6 +628,7 @@ async def api_voice(request: Request):
         "reply_text": reply_text,
         "audio_url": audio_url,
         "conversation_id": conv_id,
+        "detected_language": detected_lang,
     }
 
 

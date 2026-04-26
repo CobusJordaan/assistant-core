@@ -27,6 +27,7 @@ from whatsapp import WhatsAppDedup
 from whatsapp_session import WhatsAppSessionStore
 from whatsapp_handler import handle_whatsapp_message
 from admin.database import AdminDB
+from language_detect import detect_user_language
 
 # ---------------------------------------------------------------------------
 # Config
@@ -163,6 +164,7 @@ class ChatRequest(BaseModel):
     message: str
     model: str | None = None
     session_id: str | None = None
+    language: str | None = None
 
 
 class ToolRequest(BaseModel):
@@ -352,8 +354,15 @@ async def chat(req: ChatRequest):
     model = req.model or DEFAULT_MODEL
     session_id = req.session_id or "default"
 
+    # Detect language
+    lang_mode = req.language or "auto"
+    if lang_mode in ("af", "en"):
+        detected_lang = lang_mode
+    else:
+        detected_lang = detect_user_language(message)
+
     response_text, tool_used = await _handle_message(message, session_id, model)
-    result = {"response": response_text, "model": model}
+    result = {"response": response_text, "model": model, "detected_language": detected_lang}
     if tool_used:
         result["tool_used"] = tool_used
     return result
