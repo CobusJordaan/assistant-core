@@ -120,19 +120,27 @@ _STRINGS = {
     },
 
     # --- Invoice link ---
-    "invoice_link_found": {
-        "en": "Your latest unpaid invoice is *{num}* for *R{amount}*.\nI'll have our team send you the invoice link shortly.",
-        "af": "Jou nuutste onbetaalde faktuur is *{num}* vir *R{amount}*.\nEk sal ons span vra om die faktuurskakel vir jou te stuur.",
+    "invoice_sent": {
+        "en": "Your invoice *{num}* for *R{amount}* has been sent to you \u2705\nYou should receive it shortly.",
+        "af": "Jou faktuur *{num}* vir *R{amount}* is aan jou gestuur \u2705\nJy behoort dit binnekort te ontvang.",
+    },
+    "invoice_send_failed": {
+        "en": "I couldn't send your invoice right now. Please try again in a moment.",
+        "af": "Ek kon nie nou jou faktuur stuur nie. Probeer asseblief weer oor 'n oomblik.",
     },
     "invoice_link_none": {
-        "en": "I couldn't find any recent invoices on your account. Would you like me to check something else?",
-        "af": "Ek kon geen onlangse fakture op jou rekening kry nie. Wil jy h\u00ea ek moet iets anders nagaan?",
+        "en": "You have no unpaid invoices on your account \u2705",
+        "af": "Jy het geen onbetaalde fakture op jou rekening nie \u2705",
     },
 
     # --- Statement link ---
-    "statement_link": {
-        "en": "Your current balance is *R{balance}*.\nI'll have our team send you a statement link shortly.",
-        "af": "Jou huidige balans is *R{balance}*.\nEk sal ons span vra om 'n staatsskakel vir jou te stuur.",
+    "statement_sent": {
+        "en": "Your statement has been sent to you \u2705\nYou should receive it shortly.",
+        "af": "Jou staat is aan jou gestuur \u2705\nJy behoort dit binnekort te ontvang.",
+    },
+    "statement_send_failed": {
+        "en": "I couldn't send your statement right now. Please try again in a moment.",
+        "af": "Ek kon nie nou jou staat stuur nie. Probeer asseblief weer oor 'n oomblik.",
     },
 
     # --- Latency ---
@@ -151,16 +159,20 @@ _STRINGS = {
 
     # --- Support ---
     "support_ack": {
-        "en": "I'm sorry to hear you're having trouble. I've noted your message and our support team will follow up shortly. Is there anything else I can check for you, like your balance or invoices?",
-        "af": "Ek is jammer om te hoor jy het probleme. Ek het jou boodskap genoteer en ons ondersteuningspan sal binnekort opvolg. Is daar iets anders wat ek vir jou kan nagaan, soos jou balans of fakture?",
+        "en": "I'm sorry to hear you're having trouble. I've noted your message and our support team will follow up shortly.",
+        "af": "Ek is jammer om te hoor jy het probleme. Ek het jou boodskap genoteer en ons ondersteuningspan sal binnekort opvolg.",
     },
     "support_category_selected": {
         "en": "*{label}* \u2014 got it.\n\nPlease describe your issue briefly and I'll create a support ticket for you.",
         "af": "*{label}* \u2014 het dit.\n\nBeskryf asseblief jou probleem kortliks en ek sal 'n ondersteuningskaartjie vir jou skep.",
     },
+    "support_needs_account": {
+        "en": "To create a support ticket I need to link your account first.\n\nPlease share your account number or the name on your account.",
+        "af": "Om 'n ondersteuningskaartjie te skep moet ek eers jou rekening koppel.\n\nDeel asseblief jou rekeningnommer of die naam op jou rekening.",
+    },
     "support_ticket_created": {
-        "en": "Your support ticket *#{ticket}* has been created.\nCategory: {category}\n\nOur team will follow up with you shortly. Is there anything else I can help with?",
-        "af": "Jou ondersteuningskaartjie *#{ticket}* is geskep.\nKategorie: {category}\n\nOns span sal binnekort opvolg. Is daar iets anders waarmee ek kan help?",
+        "en": "Your support ticket *#{ticket}* has been created.\nCategory: {category}\n\nOur team will follow up with you shortly.",
+        "af": "Jou ondersteuningskaartjie *#{ticket}* is geskep.\nKategorie: {category}\n\nOns span sal binnekort opvolg.",
     },
     "support_ticket_failed": {
         "en": "I'm sorry, I couldn't create the ticket right now. Please try again in a moment, or contact us directly for support.",
@@ -187,6 +199,12 @@ _STRINGS = {
     "unknown_fallback": {
         "en": "I'm not sure I understand. Please reply with a number from the menu, or type something like *balance*, *invoices*, or *account summary*.",
         "af": "Ek is nie seker ek verstaan nie. Antwoord asseblief met 'n nommer van die kieslys, of tik iets soos *balans*, *fakture*, of *rekeningopsomming*.",
+    },
+
+    # --- Follow-up after data ---
+    "anything_else": {
+        "en": "Is there anything else I can help with?",
+        "af": "Is daar iets anders waarmee ek kan help?",
     },
 
     # --- Repeat ---

@@ -10,6 +10,7 @@ from whatsapp_format import format_wa_reply
 from whatsapp_menu import (
     resolve_menu_selection,
     render_main_menu,
+    render_menu,
     render_document_menu,
     render_support_menu,
     render_invalid_selection,
@@ -28,6 +29,13 @@ def _get_lang(session, detected_lang: str) -> str:
     if detected_lang in ("af", "en"):
         return detected_lang
     return session.language or "en"
+
+
+def _append_followup_menu(reply: str, lang: str) -> str:
+    """Append 'anything else?' + numbered menu after a data reply."""
+    followup = t(lang, "anything_else")
+    menu_body = render_menu("main_menu", "", lang)
+    return f"{reply}\n\n{followup}\n\n{menu_body}"
 
 
 async def handle_whatsapp_message(
@@ -141,7 +149,7 @@ async def handle_whatsapp_message(
 
     # 7. Execute action (natural language matched — clear any active menu)
     session_store.clear_menu(from_number)
-    result = await execute_action(intent, session.client_id, session.client_name)
+    result = await execute_action(intent, session.client_id, session.client_name, from_number)
 
     # 7a. If client is needed, set the account lookup flag
     if result.needs_client:
@@ -149,6 +157,11 @@ async def handle_whatsapp_message(
 
     # 8. Format the action reply
     action_reply = format_wa_reply(result, client_name, lang)
+
+    # 8a. Append follow-up menu after successful data replies
+    if result.success and not result.needs_client:
+        action_reply = _append_followup_menu(action_reply, lang)
+        session_store.set_menu(from_number, "main_menu")
 
     # 9. Combine greeting + action if this is the first message with an intent
     if reply_parts:
@@ -206,10 +219,22 @@ async def _handle_menu_selection(
         session_store.update_after_reply(from_number, body, reply)
         return reply
 
-    # Support category selected → ask for description
+    # Support category selected → ask for description (or link account first)
     if action in SUPPORT_CATEGORIES:
         cat = SUPPORT_CATEGORIES[action]
         session_store.clear_menu(from_number)
+
+        if not session.client_id:
+            # No linked account — ask user to identify first
+            session_store.set_support_category(from_number, cat["key"])
+            session.support_category = cat["key"]
+            session_store.set_awaiting_account_lookup(from_number)
+            reply = t(lang, "support_needs_account")
+            logger.info("Support category '%s' selected by %s but no client_id, requesting account lookup",
+                         cat["key"], from_number)
+            session_store.update_after_reply(from_number, body, reply)
+            return reply
+
         session_store.set_support_category(from_number, cat["key"])
         reply = t(lang, "support_category_selected", label=cat["label"])
         logger.info("Support category '%s' selected by %s, awaiting description",
@@ -223,13 +248,18 @@ async def _handle_menu_selection(
                 body.strip(), action, from_number)
 
     intent = WhatsAppIntent(action=action, confidence=1.0, raw_message=body)
-    result = await execute_action(intent, session.client_id, session.client_name)
+    result = await execute_action(intent, session.client_id, session.client_name, from_number)
 
     # If client is needed, set the account lookup flag
     if result.needs_client:
         session_store.set_awaiting_account_lookup(from_number)
 
     reply = format_wa_reply(result, client_name, lang)
+
+    # Append follow-up menu after successful data replies
+    if result.success and not result.needs_client:
+        reply = _append_followup_menu(reply, lang)
+        session_store.set_menu(from_number, "main_menu")
 
     # Avoid repeating identical replies
     if reply == session.last_reply:
@@ -276,6 +306,8 @@ async def _handle_support_description(
         if result.get("success"):
             ticket_number = result.get("ticket_number", "")
             reply = t(lang, "support_ticket_created", ticket=ticket_number, category=subject)
+            reply = _append_followup_menu(reply, lang)
+            session_store.set_menu(from_number, "main_menu")
             logger.info("Support ticket %s created for %s (category=%s)",
                         ticket_number, from_number, category)
         else:
@@ -343,12 +375,22 @@ async def _handle_account_lookup(
             # No email on file — link directly
             session_store.set_awaiting_email_verification(from_number, client_id, client_name, "")
             session_store.confirm_client(from_number)
-            reply = (
-                t(lang, "lookup_linked", number=client_number, name=client_name)
-                + render_main_menu(client_name, lang)
-            )
-            session_store.set_menu(from_number, "main_menu")
+            linked_msg = t(lang, "lookup_linked", number=client_number, name=client_name)
             logger.info("Account %s linked for %s (no email, auto-confirmed)", client_number, from_number)
+
+            # Resume pending support flow if category was selected before lookup
+            if session.support_category:
+                cat_labels = {
+                    "connectivity": "Connectivity / speed issue",
+                    "billing": "Billing or payment query",
+                    "general": "General / other",
+                }
+                label = cat_labels.get(session.support_category, "General / other")
+                reply = linked_msg + t(lang, "support_category_selected", label=label)
+                logger.info("Resuming support flow for %s after account link", from_number)
+            else:
+                reply = linked_msg + render_main_menu(client_name, lang)
+                session_store.set_menu(from_number, "main_menu")
         else:
             masked = _mask_email(email)
             session_store.set_awaiting_email_verification(from_number, client_id, client_name, email)
@@ -382,12 +424,23 @@ async def _handle_email_verification(
         name = session.pending_client_name
         first_name = name.split()[0] if name else "there"
         session_store.confirm_client(from_number)
-        reply = (
-            t(lang, "email_verified", name=first_name)
-            + render_main_menu(name, lang)
-        )
-        session_store.set_menu(from_number, "main_menu")
+        verified_msg = t(lang, "email_verified", name=first_name)
         logger.info("Email verified for %s — client linked: %s", from_number, name)
+
+        # Resume pending support flow if category was selected before lookup
+        if session.support_category:
+            cat_labels = {
+                "connectivity": "Connectivity / speed issue",
+                "billing": "Billing or payment query",
+                "general": "General / other",
+            }
+            label = cat_labels.get(session.support_category, "General / other")
+            reply = verified_msg + t(lang, "support_category_selected", label=label)
+            logger.info("Resuming support flow for %s after email verification", from_number)
+        else:
+            reply = verified_msg + render_main_menu(name, lang)
+            session_store.set_menu(from_number, "main_menu")
+
         session_store.update_after_reply(from_number, body, reply)
         return reply
 

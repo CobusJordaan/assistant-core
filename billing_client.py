@@ -1,11 +1,11 @@
-"""HTTP client for the billing assistant API (read-only)."""
+"""HTTP client for the billing assistant API."""
 
 import os
 import httpx
 
 
 class BillingClient:
-    """Read-only client for the CRM billing assistant API."""
+    """Client for the CRM billing assistant API."""
 
     def __init__(self):
         self.base_url = os.getenv("BILLING_ASSISTANT_BASE_URL", "").rstrip("/")
@@ -104,6 +104,34 @@ class BillingClient:
             timeout=self.timeout,
         )
         resp.raise_for_status()
+        return resp.json()
+
+    def send_invoice_whatsapp(self, client_id: int, phone_number: str = "") -> dict:
+        """Send the latest unpaid invoice to a client via WhatsApp."""
+        self._check_configured()
+        payload = {"client_id": client_id}
+        if phone_number:
+            payload["phone_number"] = phone_number
+        resp = httpx.post(
+            f"{self.base_url}/api/assistant/send-invoice-whatsapp",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        return resp.json()
+
+    def send_statement_whatsapp(self, client_id: int, phone_number: str = "") -> dict:
+        """Send a statement to a client via WhatsApp."""
+        self._check_configured()
+        payload = {"client_id": client_id}
+        if phone_number:
+            payload["phone_number"] = phone_number
+        resp = httpx.post(
+            f"{self.base_url}/api/assistant/send-statement-whatsapp",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
         return resp.json()
 
 

@@ -39,7 +39,8 @@ _HINT_MAP = {
 
 
 async def execute_action(intent: WhatsAppIntent, client_id: int | None,
-                         client_name: str = "") -> ActionResult:
+                         client_name: str = "",
+                         from_number: str = "") -> ActionResult:
     """Execute the CRM/tool action for a classified intent."""
     action = intent.action
 
@@ -56,7 +57,7 @@ async def execute_action(intent: WhatsAppIntent, client_id: int | None,
                     action=action, success=False, error="no_client",
                     needs_client=True, display_hint=_HINT_MAP.get(action, "unknown"),
                 )
-            return await _execute_client_action(action, client_id)
+            return await _execute_client_action(action, client_id, from_number)
 
         # --- Latency check ---
         if action == "latency_check":
@@ -90,7 +91,8 @@ async def execute_action(intent: WhatsAppIntent, client_id: int | None,
 # Client actions
 # ---------------------------------------------------------------------------
 
-async def _execute_client_action(action: str, client_id: int) -> ActionResult:
+async def _execute_client_action(action: str, client_id: int,
+                                 from_number: str = "") -> ActionResult:
     """Run a billing API call that requires client context."""
 
     if action == "balance_check":
@@ -117,20 +119,37 @@ async def _execute_client_action(action: str, client_id: int) -> ActionResult:
             display_hint="summary",
         )
 
-    # Interim: fetch info only; actual send requires billing-side endpoints
     if action == "send_invoice_link":
-        result = billing_client.client_unpaid_invoices(client_id, limit=1)
-        return ActionResult(
-            action=action, success=True, data=result,
-            display_hint="invoice_link",
-        )
+        try:
+            result = billing_client.send_invoice_whatsapp(client_id, phone_number=from_number)
+            # "no_unpaid_invoices" is not a failure — it's valid info
+            is_ok = result.get("success", False) or result.get("error") == "no_unpaid_invoices"
+            return ActionResult(
+                action=action, success=is_ok,
+                data=result, error=result.get("error"),
+                display_hint="invoice_link",
+            )
+        except Exception as e:
+            logger.error("Send invoice WhatsApp failed: %s", e)
+            return ActionResult(
+                action=action, success=False,
+                error="send_failed", display_hint="invoice_link",
+            )
 
     if action == "send_statement_link":
-        result = billing_client.client_balance(client_id)
-        return ActionResult(
-            action=action, success=True, data=result,
-            display_hint="statement_link",
-        )
+        try:
+            result = billing_client.send_statement_whatsapp(client_id, phone_number=from_number)
+            return ActionResult(
+                action=action, success=result.get("success", False),
+                data=result, error=result.get("error"),
+                display_hint="statement_link",
+            )
+        except Exception as e:
+            logger.error("Send statement WhatsApp failed: %s", e)
+            return ActionResult(
+                action=action, success=False,
+                error="send_failed", display_hint="statement_link",
+            )
 
     return ActionResult(action=action, success=False, error="unknown_client_action", display_hint="error")
 

@@ -21,9 +21,10 @@ def format_wa_reply(result: ActionResult, client_name: str = "", lang: str = "en
     if result.needs_client:
         return t(lang, "needs_client")
 
-    # Action failed
+    # Action failed (let invoice/statement formatters handle their own errors)
     if not result.success and result.error and result.error != "no_client":
-        return t(lang, "generic_error")
+        if result.display_hint not in ("invoice_link", "statement_link"):
+            return t(lang, "generic_error")
 
     hint = result.display_hint
 
@@ -120,18 +121,20 @@ def _format_summary(data: dict, lang: str) -> str:
 
 
 def _format_invoice_link(data: dict, lang: str) -> str:
-    invoices = data.get("invoices", [])
-    if invoices:
-        inv = invoices[0]
-        num = inv.get("invoice_number", "?")
-        bal = inv.get("balance", 0)
-        return t(lang, "invoice_link_found", num=num, amount=f"{bal:,.2f}")
-    return t(lang, "invoice_link_none")
+    if data.get("success"):
+        num = data.get("invoice_number", "?")
+        bal = data.get("invoice_balance", 0)
+        return t(lang, "invoice_sent", num=num, amount=f"{bal:,.2f}")
+    error = data.get("error", "")
+    if error == "no_unpaid_invoices":
+        return t(lang, "invoice_link_none")
+    return t(lang, "invoice_send_failed")
 
 
 def _format_statement_link(data: dict, lang: str) -> str:
-    balance = data.get("account_balance", 0)
-    return t(lang, "statement_link", balance=f"{balance:,.2f}")
+    if data.get("success"):
+        return t(lang, "statement_sent")
+    return t(lang, "statement_send_failed")
 
 
 def _format_latency(data: dict, lang: str) -> str:
