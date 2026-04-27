@@ -279,6 +279,7 @@ async def _call_stt(audio_bytes: bytes, content_type: str) -> str:
         "audio/mp4": ".m4a", "audio/ogg": ".ogg", "audio/x-wav": ".wav",
     }
     ext = ext_map.get(content_type, ".webm")
+    logger.info("STT request: %d bytes (%s)", len(audio_bytes), content_type)
 
     async with httpx.AsyncClient(timeout=30) as client:
         files = {"file": (f"audio{ext}", audio_bytes, content_type)}
@@ -289,13 +290,16 @@ async def _call_stt(audio_bytes: bytes, content_type: str) -> str:
             data=data,
         )
         resp.raise_for_status()
-        return resp.json().get("text", "").strip()
+        text = resp.json().get("text", "").strip()
+        logger.info("STT result: \"%s\"", text[:100] if text else "(empty)")
+        return text
 
 
 async def _call_tts(text: str, voice: str | None = None) -> tuple[bytes, str]:
     voice = voice or cfg.tts_voice
     if len(text) > 4000:
         text = text[:4000]
+    logger.info("TTS request: %d chars, voice=%s", len(text), voice)
 
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(
@@ -303,12 +307,16 @@ async def _call_tts(text: str, voice: str | None = None) -> tuple[bytes, str]:
             json={"input": text, "voice": voice},
         )
         resp.raise_for_status()
-        return resp.content, resp.headers.get("content-type", "audio/wav")
+        audio = resp.content
+        ct = resp.headers.get("content-type", "audio/wav")
+        logger.info("TTS result: %d bytes (%s)", len(audio), ct)
+        return audio, ct
 
 
 async def _stream_ollama(session: VoiceSession, send_fn) -> str:
     messages = session.get_ollama_messages()
     collected = ""
+    logger.info("Ollama request: model=%s, %d messages", cfg.ollama_model, len(messages))
 
     timeouts = httpx.Timeout(connect=5.0, read=float(cfg.ollama_timeout), write=10.0, pool=5.0)
     async with httpx.AsyncClient(timeout=timeouts) as client:
@@ -336,6 +344,7 @@ async def _stream_ollama(session: VoiceSession, send_fn) -> str:
                 if data.get("done"):
                     break
 
+    logger.info("Ollama result: %d chars", len(collected))
     return collected
 
 
