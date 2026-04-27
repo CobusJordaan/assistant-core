@@ -34,6 +34,10 @@ from language_detect import detect_user_language
 # ---------------------------------------------------------------------------
 
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "assistant-core")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_CHAT_MODEL = os.getenv("OLLAMA_CHAT_MODEL") or os.getenv("DEFAULT_MODEL", "llama3.2")
+OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "60"))
+SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "You are a helpful AI assistant.")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "memory.db")
 ADMIN_DB_PATH = os.getenv("ADMIN_DB_PATH", "/opt/ai-assistant/data/admin.db")
 ASSISTANT_CORE_API_TOKEN = os.getenv("ASSISTANT_CORE_API_TOKEN", "").strip()
@@ -123,7 +127,21 @@ async def lifespan(application: FastAPI):
     _register_billing_tools()
     logger.info(f"assistant-core started — {len(list_tools())} tools loaded")
 
+    # Start voice gateway background tasks
+    if _voice_gateway_loaded:
+        try:
+            voice_gateway_startup()
+        except Exception as e:
+            logger.warning("Voice gateway startup failed: %s", e)
+
     yield
+
+    # Shutdown voice gateway
+    if _voice_gateway_loaded:
+        try:
+            voice_gateway_shutdown()
+        except Exception as e:
+            logger.warning("Voice gateway shutdown error: %s", e)
 
     # Shutdown
     admin_db.close()
@@ -154,6 +172,15 @@ app.mount("/static/admin", StaticFiles(directory="static/admin"), name="admin-st
 from portal import portal_router
 app.include_router(portal_router)
 app.mount("/static/portal", StaticFiles(directory="static/portal"), name="portal-static")
+
+# Mount voice gateway
+try:
+    from services.voice_gateway.app import voice_gateway_router, voice_gateway_startup, voice_gateway_shutdown
+    app.include_router(voice_gateway_router)
+    _voice_gateway_loaded = True
+except Exception as e:
+    logger.warning("Voice gateway failed to load: %s", e)
+    _voice_gateway_loaded = False
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +285,31 @@ def _resolve_session_id(request: Request, messages: list[dict] | None = None,
     return "default"
 
 
+async def _ollama_general_chat(message: str, model: str | None = None) -> str:
+    """Send a general message to Ollama for LLM chat (no tool detection)."""
+    import httpx
+
+    chat_model = model if model and model != "assistant-core" else OLLAMA_CHAT_MODEL
+    try:
+        timeouts = httpx.Timeout(connect=5.0, read=float(OLLAMA_TIMEOUT), write=10.0, pool=5.0)
+        async with httpx.AsyncClient(timeout=timeouts) as client:
+            resp = await client.post(f"{OLLAMA_URL}/api/chat", json={
+                "model": chat_model,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": message},
+                ],
+                "stream": False,
+                "options": {"temperature": 0.7, "num_predict": 4096},
+            })
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("message", {}).get("content", "").strip()
+    except Exception as e:
+        logger.error("Ollama general chat error: %s", e)
+        return f"Sorry, I couldn't process that request. (Error: {str(e)[:100]})"
+
+
 async def _handle_message(message: str, session_id: str = "default", model: str | None = None) -> tuple[str, str | None]:
     """Process a message through tool detection with billing session context.
 
@@ -265,7 +317,9 @@ async def _handle_message(message: str, session_id: str = "default", model: str 
     """
     intent = detect_intent(message)
     if not intent:
-        return f"Received: {message}", None
+        # No tool match — use Ollama for general chat
+        response = await _ollama_general_chat(message, model)
+        return response, None
 
     tool_name = intent["tool"]
     args = intent.get("args", {})
