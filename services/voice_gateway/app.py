@@ -410,7 +410,10 @@ async def websocket_voice_session(ws: WebSocket):
 async def _handle_voice_turn(ws: WebSocket, session: VoiceSession, msg: dict):
     """Handle one voice turn: audio -> STT -> Ollama -> TTS -> audio back."""
     audio_b64 = msg.get("data", "")
-    audio_format = msg.get("format", "audio/webm")
+    audio_format = msg.get("format", "webm")
+    # Normalize to MIME type — browser sends "webm", we need "audio/webm"
+    if not audio_format.startswith("audio/"):
+        audio_format = f"audio/{audio_format}"
     if not audio_b64:
         await ws.send_json({"type": "error", "message": "No audio data"})
         return
