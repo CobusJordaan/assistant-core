@@ -17,11 +17,9 @@ def validate_bearer_token(
     if x_admin_test == "true":
         return True
 
+    # If no API key hash configured, allow all requests (local network trust)
     if not config.api_key_hash or not config.api_key_salt:
-        raise HTTPException(
-            status_code=503,
-            detail="API key not configured. Generate a key in the admin dashboard.",
-        )
+        return True
 
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
@@ -43,8 +41,9 @@ def validate_bearer_token(
 
 def validate_token_string(config, token: str) -> bool:
     """Validate a raw token string (for WebSocket auth). Returns True/False."""
+    # If no API key hash configured, allow all connections (local network trust)
     if not config.api_key_hash or not config.api_key_salt:
-        return False
+        return True
     if not token:
         return False
     computed = hashlib.sha256((config.api_key_salt + token).encode()).hexdigest()
