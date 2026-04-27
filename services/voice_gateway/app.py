@@ -247,7 +247,10 @@ async def serve_audio(
     x_admin_test: str | None = Header(None),
 ):
     """Serve a temp audio file. Auth via header or ?token= query param."""
-    if authorization:
+    # If no API key configured, allow all (local network trust)
+    if not cfg.api_key_hash or not cfg.api_key_salt:
+        pass  # Allow unauthenticated access
+    elif authorization:
         validate_bearer_token(cfg, authorization, x_admin_test)
     elif token:
         if not validate_token_string(cfg, token):
