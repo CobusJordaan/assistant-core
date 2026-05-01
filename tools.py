@@ -118,17 +118,21 @@ register_tool("tcp_check", tool_tcp_check, "Check if a TCP port is open", {"host
 # RADIUS client tools
 # ---------------------------------------------------------------------------
 
-from radius_tools import tool_client_radius_status, tool_client_ping
+try:
+    from radius_tools import tool_client_radius_status, tool_client_ping
 
-register_tool(
-    "client_radius_status",
-    tool_client_radius_status,
-    "Check if a billing client is currently online via RADIUS — returns IP, MAC, NAS IP, and session start time",
-    {"client_id": {"type": "integer", "required": True}},
-)
-register_tool(
-    "client_ping",
-    tool_client_ping,
-    "Check a client's RADIUS status then ping their assigned IP address",
-    {"client_id": {"type": "integer", "required": True}, "count": {"type": "integer", "default": 4}},
-)
+    register_tool(
+        "client_radius_status",
+        tool_client_radius_status,
+        "Check if a billing client is currently online via RADIUS — returns IP, MAC, NAS IP, and session start time",
+        {"client_id": {"type": "integer", "required": True}},
+    )
+    register_tool(
+        "client_ping",
+        tool_client_ping,
+        "Check a client's RADIUS status then ping their assigned IP address",
+        {"client_id": {"type": "integer", "required": True}, "count": {"type": "integer", "default": 4}},
+    )
+except Exception as _radius_err:
+    import logging as _log
+    _log.getLogger(__name__).warning("RADIUS tools failed to load: %s", _radius_err)
