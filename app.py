@@ -21,7 +21,7 @@ from memory_api import MemoryStore, memory_router
 from tools import register_tool, list_tools, execute_tool
 from tool_intent import detect_intent
 from billing_client import billing_client
-from billing_format import format_billing_result, format_client_lookup
+from billing_format import format_billing_result, format_client_lookup, format_radius_status, format_client_ping
 from billing_session import set_client, get_client, clear_client, set_last_lookup, get_last_lookup
 from whatsapp import WhatsAppDedup
 from whatsapp_session import WhatsAppSessionStore
@@ -310,6 +310,16 @@ async def _ollama_general_chat(message: str, model: str | None = None) -> str:
         return f"Sorry, I couldn't process that request. (Error: {str(e)[:100]})"
 
 
+async def _resolve_client_id(args: dict, session_id: str) -> int | str:
+    """Resolve client_id from args or session context. Returns int ID or error string."""
+    if args.get("client_id"):
+        return int(args["client_id"])
+    ctx = get_client(session_id)
+    if ctx:
+        return ctx["client_id"]
+    return NO_CLIENT_MSG
+
+
 async def _handle_message(message: str, session_id: str = "default", model: str | None = None) -> tuple[str, str | None]:
     """Process a message through tool detection with billing session context.
 
@@ -379,6 +389,63 @@ async def _handle_message(message: str, session_id: str = "default", model: str 
         if formatted:
             return formatted, tool_name
         return json.dumps(result, indent=2, default=str), tool_name
+
+    # --- RADIUS: check online status ---
+    if tool_name == "client_radius_status":
+        client_id = await _resolve_client_id(args, session_id)
+        if isinstance(client_id, str):
+            return client_id, tool_name  # error message
+        result = await execute_tool(tool_name, {"client_id": client_id})
+        data = result.get("result", result)
+        if data.get("is_online"):
+            ctx = get_client(session_id)
+            if not ctx:
+                set_client(session_id, client_id, data.get("client_name", ""))
+        return format_radius_status(data), tool_name
+
+    # --- RADIUS: ping client ---
+    if tool_name == "client_ping":
+        client_id = await _resolve_client_id(args, session_id)
+        if isinstance(client_id, str):
+            return client_id, tool_name  # error message
+        result = await execute_tool(tool_name, {"client_id": client_id})
+        data = result.get("result", result)
+        return format_client_ping(data), tool_name
+
+    # --- RADIUS: full network check by client number (natural language path) ---
+    if tool_name == "client_network_check":
+        client_number = args.get("client_number")
+        client_id = None
+
+        if client_number:
+            # Look up client by number
+            lookup = await execute_tool("billing_client_lookup", {"query": client_number, "limit": 5})
+            lookup_data = lookup.get("result", {})
+            clients = lookup_data.get("clients", [])
+            # Find exact client_number match first, then fall back to first result
+            exact = next((c for c in clients if (c.get("client_number") or "").upper() == client_number.upper()), None)
+            match = exact or (clients[0] if clients else None)
+            if not match:
+                return f"Could not find client with number {client_number}.", tool_name
+            client_id = match["id"]
+            set_client(session_id, client_id, match.get("fullname", ""))
+        else:
+            ctx = get_client(session_id)
+            if not ctx:
+                return NO_CLIENT_MSG, tool_name
+            client_id = ctx["client_id"]
+
+        # Get RADIUS status
+        radius_result = await execute_tool("client_radius_status", {"client_id": client_id})
+        radius_data = radius_result.get("result", radius_result)
+
+        if not radius_data.get("is_online"):
+            return format_radius_status(radius_data), tool_name
+
+        # Client is online — also ping them
+        ping_result = await execute_tool("client_ping", {"client_id": client_id})
+        ping_data = ping_result.get("result", ping_result)
+        return format_client_ping(ping_data), tool_name
 
     # --- Non-billing tools (ping, dns, http, tcp) ---
     result = await execute_tool(tool_name, args)

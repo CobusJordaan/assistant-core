@@ -2,6 +2,18 @@
 
 import re
 
+# Client number pattern: 2-6 uppercase letters followed by 3-7 digits (e.g. DRA0011, WN0042)
+_CLIENT_NUM_RE = re.compile(r'\b([A-Z]{2,6}\d{3,7})\b')
+
+# Keywords that indicate a network/connectivity check is needed
+_NETWORK_KEYWORDS = re.compile(
+    r'\b(troubleshoot|network\s+issue|not\s+online|offline|connectivity|connection\s+problem|'
+    r'not\s+connect(?:ing)?|no\s+internet|no\s+connect(?:ion)?|connection|online|ping|'
+    r'check\s+(?:connection|network|internet|status)|network\s+check|diagnos|'
+    r'is\s+(?:he|she|it|the\s+client)\s+online|not\s+working)\b',
+    re.IGNORECASE
+)
+
 
 def detect_billing_intent(message: str) -> dict | None:
     """Parse billing-related commands from a message.
@@ -92,5 +104,22 @@ def detect_billing_intent(message: str) -> dict | None:
     # ping client (follow-up, no ID)
     if lower in ("ping client", "ping"):
         return {"tool": "client_ping", "args": {}}
+
+    # Natural language network check — client number + any network keyword
+    # e.g. "troubleshoot network issue for DRA0011", "DRA0011 is offline", "ping DRA0011"
+    client_num_match = _CLIENT_NUM_RE.search(message)
+    if client_num_match and _NETWORK_KEYWORDS.search(message):
+        return {"tool": "client_network_check", "args": {"client_number": client_num_match.group(1)}}
+
+    # Client number alone — treat as a ping/connection check shorthand
+    # e.g. "DRA0011 online?" or just "DRA0011" as a follow-up after a network discussion
+    if client_num_match and lower.strip() == client_num_match.group(1).lower():
+        return {"tool": "client_network_check", "args": {"client_number": client_num_match.group(1)}}
+
+    # Network check follow-up (no client number — use session context)
+    if _NETWORK_KEYWORDS.search(message) and not client_num_match:
+        if lower.strip() in ("troubleshoot", "network issue", "not online", "offline",
+                             "check connection", "check network", "diagnose", "network check"):
+            return {"tool": "client_network_check", "args": {}}
 
     return None

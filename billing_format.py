@@ -19,6 +19,68 @@ def format_billing_result(tool_name: str, result: dict) -> str | None:
     return None
 
 
+def format_radius_status(data: dict) -> str:
+    """Format a client RADIUS status result into readable text."""
+    if not data.get("success"):
+        return f"RADIUS check failed: {data.get('error', 'Unknown error')}"
+
+    name = data.get("client_name", "Unknown")
+    num = data.get("client_number", "")
+    header = f"{name} ({num})" if num else name
+
+    if not data.get("is_online"):
+        reason = data.get("reason", "")
+        msg = f"{header} is currently OFFLINE."
+        if reason:
+            msg += f"\n  Note: {reason}"
+        return msg
+
+    ip = data.get("ip_address", "N/A")
+    mac = data.get("mac_address", "N/A")
+    nas = data.get("nas_ip", "N/A")
+    session_start = data.get("session_start", "N/A")
+    radius_user = data.get("radius_username") or data.get("logged_in_as", "N/A")
+
+    lines = [f"{header} is ONLINE."]
+    lines.append(f"  IP address:    {ip}")
+    lines.append(f"  MAC address:   {mac}")
+    lines.append(f"  NAS IP:        {nas}")
+    lines.append(f"  RADIUS user:   {radius_user}")
+    if session_start and session_start != "N/A":
+        lines.append(f"  Session start: {session_start}")
+    return "\n".join(lines)
+
+
+def format_client_ping(data: dict) -> str:
+    """Format a client ping result into readable text."""
+    if not data.get("success"):
+        return f"Ping check failed: {data.get('error', 'Unknown error')}"
+
+    name = data.get("client_name", "Unknown")
+    num = data.get("client_number", "")
+    header = f"{name} ({num})" if num else name
+
+    if not data.get("is_online"):
+        return f"{header} is OFFLINE — cannot ping."
+
+    if not data.get("ping"):
+        return f"{header} is online but has no IP address — cannot ping."
+
+    ip = data.get("ip_address", "N/A")
+    mac = data.get("mac_address", "N/A")
+    ping = data.get("ping", {})
+    ping_ok = ping.get("success", False)
+    ping_output = ping.get("output", "").strip()
+
+    lines = [f"{header} — RADIUS online, IP: {ip}"]
+    lines.append(f"  MAC: {mac}")
+    lines.append(f"  Ping {ip}: {'REACHABLE' if ping_ok else 'UNREACHABLE'}")
+    if ping_output:
+        for line in ping_output.splitlines()[-6:]:  # last 6 lines of ping output
+            lines.append(f"    {line}")
+    return "\n".join(lines)
+
+
 SHORTLIST_MAX = 5
 
 
