@@ -326,6 +326,7 @@ async def _handle_message(message: str, session_id: str = "default", model: str 
     Returns (response_text, tool_name_or_none).
     """
     intent = detect_intent(message)
+    logger.info("[HANDLE] session=%s intent=%s msg=%.120s", session_id, intent["tool"] if intent else None, message)
     if not intent:
         # No tool match — use Ollama for general chat
         response = await _ollama_general_chat(message, model)
