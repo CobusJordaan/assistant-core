@@ -113,3 +113,22 @@ register_tool("ping", tool_ping, "Ping a host", {"host": {"type": "string", "req
 register_tool("dns_lookup", tool_dns_lookup, "DNS lookup for a hostname", {"hostname": {"type": "string", "required": True}})
 register_tool("http_check", tool_http_check, "Check if a URL is reachable", {"url": {"type": "string", "required": True}, "timeout": {"type": "integer", "default": 10}})
 register_tool("tcp_check", tool_tcp_check, "Check if a TCP port is open", {"host": {"type": "string", "required": True}, "port": {"type": "integer", "required": True}})
+
+# ---------------------------------------------------------------------------
+# RADIUS client tools
+# ---------------------------------------------------------------------------
+
+from radius_tools import tool_client_radius_status, tool_client_ping
+
+register_tool(
+    "client_radius_status",
+    tool_client_radius_status,
+    "Check if a billing client is currently online via RADIUS — returns IP, MAC, NAS IP, and session start time",
+    {"client_id": {"type": "integer", "required": True}},
+)
+register_tool(
+    "client_ping",
+    tool_client_ping,
+    "Check a client's RADIUS status then ping their assigned IP address",
+    {"client_id": {"type": "integer", "required": True}, "count": {"type": "integer", "default": 4}},
+)

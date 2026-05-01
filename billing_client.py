@@ -123,6 +123,18 @@ class BillingClient:
         )
         return resp.json()
 
+    def client_radius_status(self, client_id: int) -> dict:
+        """Get RADIUS online status, IP, MAC, and session info for a client."""
+        self._check_configured()
+        resp = httpx.get(
+            f"{self.base_url}/api/assistant/client-radius-status",
+            params={"client_id": client_id},
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def send_statement_whatsapp(self, client_id: int, phone_number: str = "",
                                 language: str = "") -> dict:
         """Send a statement to a client via WhatsApp."""

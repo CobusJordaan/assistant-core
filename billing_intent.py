@@ -71,4 +71,26 @@ def detect_billing_intent(message: str) -> dict | None:
     if lower in ("summary", "client summary"):
         return {"tool": "billing_client_summary", "args": {}}
 
+    # is client <id> online / client <id> online / check client <id> connection
+    m = re.match(r"^(?:is\s+)?client\s+(\d+)\s+online$", lower)
+    if m:
+        return {"tool": "client_radius_status", "args": {"client_id": int(m.group(1))}}
+
+    m = re.match(r"^check\s+client\s+(\d+)\s+(?:connection|status|online)$", lower)
+    if m:
+        return {"tool": "client_radius_status", "args": {"client_id": int(m.group(1))}}
+
+    # online / connection status (follow-up, no ID)
+    if lower in ("online", "is online", "connection", "connection status", "online status", "check connection"):
+        return {"tool": "client_radius_status", "args": {}}
+
+    # ping client <id>
+    m = re.match(r"^ping\s+client\s+(\d+)$", lower)
+    if m:
+        return {"tool": "client_ping", "args": {"client_id": int(m.group(1))}}
+
+    # ping client (follow-up, no ID)
+    if lower in ("ping client", "ping"):
+        return {"tool": "client_ping", "args": {}}
+
     return None
