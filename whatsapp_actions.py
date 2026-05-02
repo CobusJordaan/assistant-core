@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass, field
 
 from billing_client import billing_client
+from radius_tools import tool_client_ping
 from tools import execute_tool
 from whatsapp_intent import WhatsAppIntent
 
@@ -27,6 +28,7 @@ FALLBACK_ERROR = "I'm having trouble processing that right now. Please try again
 _CLIENT_ACTIONS = frozenset({
     "balance_check", "unpaid_invoices", "client_summary",
     "send_invoice_link", "send_statement_link",
+    "connection_check",
 })
 
 _HINT_MAP = {
@@ -35,6 +37,7 @@ _HINT_MAP = {
     "client_summary": "summary",
     "send_invoice_link": "invoice_link",
     "send_statement_link": "statement_link",
+    "connection_check": "connection",
 }
 
 
@@ -153,7 +156,47 @@ async def _execute_client_action(action: str, client_id: int,
                 error="send_failed", display_hint="statement_link",
             )
 
+    if action == "connection_check":
+        return await _execute_connection_check(client_id)
+
     return ActionResult(action=action, success=False, error="unknown_client_action", display_hint="error")
+
+
+# ---------------------------------------------------------------------------
+# Connection check (RADIUS lookup + ping the client's IP)
+# ---------------------------------------------------------------------------
+
+async def _execute_connection_check(client_id: int) -> ActionResult:
+    """Fetch the client's RADIUS session and ping their IP. Mirrors the
+    crm_tools.py `ping_client_ip` flow: online + ping reachable means healthy;
+    anything else (offline, no IP, ping fail) signals an outage and the caller
+    should offer a support ticket as the follow-up step."""
+    try:
+        result = tool_client_ping(client_id)
+    except Exception as e:
+        logger.error("connection_check tool error: %s", e, exc_info=True)
+        return ActionResult(
+            action="connection_check", success=False,
+            error=str(e), display_hint="connection",
+        )
+
+    if not result.get("success"):
+        return ActionResult(
+            action="connection_check", success=False,
+            data=result, error=result.get("error", "connection_check_failed"),
+            display_hint="connection",
+        )
+
+    # Healthy = online AND ping reachable. Everything else triggers the
+    # ticket-offer path in the formatter/handler.
+    ping = result.get("ping") or {}
+    healthy = bool(result.get("is_online")) and bool(ping.get("success"))
+
+    return ActionResult(
+        action="connection_check", success=True,
+        data={**result, "healthy": healthy, "needs_ticket_offer": not healthy},
+        display_hint="connection",
+    )
 
 
 # ---------------------------------------------------------------------------

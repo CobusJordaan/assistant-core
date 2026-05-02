@@ -97,7 +97,7 @@ _p(
     "send_statement_link", 0.85,
 )
 
-# --- Latency / connectivity (explicit ping/check) ---
+# --- Latency check: explicit "ping <host>" with a non-IP-like target ---
 def _extract_host(m: re.Match) -> dict:
     text = m.group(0)
     host_m = re.search(r"(?:ping|check|test)\s+(\S+)", text, re.IGNORECASE)
@@ -105,14 +105,21 @@ def _extract_host(m: re.Match) -> dict:
         return {"host": host_m.group(1)}
     return {}
 
+# Only fires when the user supplies an explicit host argument (e.g. "ping google.com").
+# Bare "check connection" / "check my line" route to connection_check below so we
+# fetch the client's RADIUS session and ping their own IP.
 _p(
-    r"\b(ping\s+\S+|check\s+(connectivity|connection|latency)\s*\S*)\b",
+    r"\bping\s+\S+",
     "latency_check", 0.90, _extract_host,
 )
 
-# --- Latency / connectivity (descriptive complaints) ---
+# --- Connection check: descriptive complaints + bare "check connection" ---
+# Routes to RADIUS-aware tool_client_ping; failure offers a support ticket.
 _p(
     r"\b("
+    r"check\s+(my\s+)?(connectivity|connection|line|internet|wifi|wi-fi|service)|"
+    r"is\s+my\s+(connection|internet|line|service)\s+(up|ok|down|working)|"
+    r"connection check|"
     r"internet.{0,15}(slow|down|not working|problem|issue|offline)|"
     r"connection.{0,15}(slow|down|problem|issue|dropping)|"
     r"wifi.{0,10}(slow|down|not working|problem)|"
@@ -123,7 +130,7 @@ _p(
     r"lyn af|konneksie|konneksietoets|verbinding|"
     r"toets my lyn|check my lyn|internet toets"
     r")\b",
-    "latency_check", 0.80,
+    "connection_check", 0.85,
 )
 
 # --- Support intake (broad catch-all, lower confidence) ---

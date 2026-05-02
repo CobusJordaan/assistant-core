@@ -25,7 +25,7 @@ MAIN_MENU = {
         "2": {"label": "Balance and unpaid invoices", "action": "balance_check"},
         "3": {"label": "Invoice or statement", "action": "_document_menu"},
         "4": {"label": "Support", "action": "_support_menu"},
-        "5": {"label": "Connection check", "action": "latency_check"},
+        "5": {"label": "Connection check", "action": "connection_check"},
     },
 }
 

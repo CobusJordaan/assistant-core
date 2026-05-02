@@ -49,6 +49,9 @@ def format_wa_reply(result: ActionResult, client_name: str = "", lang: str = "en
     if hint == "latency":
         return _format_latency(result.data, lang)
 
+    if hint == "connection":
+        return _format_connection(result.data, lang)
+
     if hint == "support":
         return t(lang, "support_ack")
 
@@ -148,3 +151,46 @@ def _format_latency(data: dict, lang: str) -> str:
             return t(lang, "latency_ok_avg", host=host, avg=avg)
         return t(lang, "latency_ok", host=host)
     return t(lang, "latency_fail", host=host)
+
+
+def _format_connection(data: dict, lang: str) -> str:
+    """Format the RADIUS-aware connection_check result.
+
+    The handler decides whether to append a ticket offer based on
+    `data['needs_ticket_offer']`; this function only renders the diagnostic
+    text. Possible states:
+      - healthy:           online + ping reachable
+      - online_no_ping:    online but ping failed
+      - online_no_ip:      online but no IP assigned (rare)
+      - offline:           RADIUS shows no active session
+      - no_radius:         client has no radius_username/MAC configured
+    """
+    if not data:
+        return t(lang, "connection_error")
+
+    if data.get("error"):
+        return t(lang, "connection_error")
+
+    if data.get("healthy"):
+        ip = data.get("ip_address", "")
+        ping = data.get("ping") or {}
+        output = ping.get("output", "")
+        avg_match = re.search(r"Average\s*=\s*(\d+)ms|avg[^=]*=\s*([\d.]+)", output)
+        if avg_match:
+            avg = avg_match.group(1) or avg_match.group(2)
+            return t(lang, "connection_healthy_avg", ip=ip, avg=avg)
+        return t(lang, "connection_healthy", ip=ip)
+
+    # Unhealthy variants — handler will append the ticket offer
+    if not data.get("is_online"):
+        if data.get("reason") and "RADIUS" in str(data.get("reason", "")):
+            return t(lang, "connection_no_radius")
+        return t(lang, "connection_offline")
+
+    ping = data.get("ping")
+    if ping is None:
+        # Online but no IP assigned
+        return t(lang, "connection_online_no_ip")
+
+    # Online + ping failed
+    return t(lang, "connection_online_no_ping", ip=data.get("ip_address", ""))

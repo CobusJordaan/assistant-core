@@ -50,6 +50,9 @@ _MENU_COLUMNS = [
     # Unlinked-ticket fallback after failed verification
     ("awaiting_unlinked_ticket_offer", "INTEGER DEFAULT 0"),
     ("awaiting_unlinked_ticket_description", "INTEGER DEFAULT 0"),
+    # Connection-check ticket offer after a failed RADIUS/ping check
+    ("awaiting_connection_ticket_offer", "INTEGER DEFAULT 0"),
+    ("connection_ticket_context", "TEXT DEFAULT ''"),
 ]
 
 
@@ -67,6 +70,7 @@ class WhatsAppSession:
         "awaiting_link_client_number", "awaiting_link_contract_id", "awaiting_link_email",
         "pending_link_client_number", "pending_link_contract_id",
         "awaiting_unlinked_ticket_offer", "awaiting_unlinked_ticket_description",
+        "awaiting_connection_ticket_offer", "connection_ticket_context",
         "created_at", "updated_at",
     )
 
@@ -89,7 +93,9 @@ class WhatsAppSession:
                  pending_link_client_number: str = "",
                  pending_link_contract_id: str = "",
                  awaiting_unlinked_ticket_offer: bool = False,
-                 awaiting_unlinked_ticket_description: bool = False):
+                 awaiting_unlinked_ticket_description: bool = False,
+                 awaiting_connection_ticket_offer: bool = False,
+                 connection_ticket_context: str = ""):
         self.from_number = from_number
         self.client_id = client_id
         self.client_name = client_name
@@ -115,6 +121,8 @@ class WhatsAppSession:
         self.pending_link_contract_id = pending_link_contract_id
         self.awaiting_unlinked_ticket_offer = awaiting_unlinked_ticket_offer
         self.awaiting_unlinked_ticket_description = awaiting_unlinked_ticket_description
+        self.awaiting_connection_ticket_offer = awaiting_connection_ticket_offer
+        self.connection_ticket_context = connection_ticket_context
         self.created_at = created_at
         self.updated_at = updated_at
 
@@ -417,6 +425,38 @@ class WhatsAppSessionStore:
         )
         self._conn.commit()
 
+    # --- Connection-check ticket offer ---
+
+    def offer_connection_ticket(self, from_number: str, context: str):
+        """Ask the user yes/no whether to open a connectivity ticket.
+
+        `context` is a short summary (e.g. "offline" / "ping_failed:1.2.3.4")
+        that will be included in the ticket description if accepted.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET awaiting_connection_ticket_offer = 1,
+                   connection_ticket_context = ?,
+                   updated_at = ?
+               WHERE from_number = ?""",
+            (context or "", now, from_number),
+        )
+        self._conn.commit()
+
+    def clear_connection_ticket_state(self, from_number: str):
+        """Clear connection-ticket offer state and stored context."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET awaiting_connection_ticket_offer = 0,
+                   connection_ticket_context = '',
+                   updated_at = ?
+               WHERE from_number = ?""",
+            (now, from_number),
+        )
+        self._conn.commit()
+
     def set_language(self, from_number: str, lang: str):
         """Store detected language preference for this session."""
         now = datetime.now(timezone.utc).isoformat()
@@ -480,6 +520,8 @@ class WhatsAppSessionStore:
                    pending_link_contract_id = '',
                    awaiting_unlinked_ticket_offer = 0,
                    awaiting_unlinked_ticket_description = 0,
+                   awaiting_connection_ticket_offer = 0,
+                   connection_ticket_context = '',
                    language = '',
                    updated_at = ?
                WHERE from_number = ?""",
@@ -523,4 +565,6 @@ class WhatsAppSessionStore:
             pending_link_contract_id=_col("pending_link_contract_id") or "",
             awaiting_unlinked_ticket_offer=bool(_col("awaiting_unlinked_ticket_offer") or 0),
             awaiting_unlinked_ticket_description=bool(_col("awaiting_unlinked_ticket_description") or 0),
+            awaiting_connection_ticket_offer=bool(_col("awaiting_connection_ticket_offer") or 0),
+            connection_ticket_context=_col("connection_ticket_context") or "",
         )

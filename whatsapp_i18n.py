@@ -286,6 +286,44 @@ _STRINGS = {
         "en": "No problem. If you change your mind, send *Hi* to start over.",
         "af": "Geen probleem nie. As jy van plan verander, stuur *Hi* om weer te begin.",
     },
+
+    # --- Connection check (menu 5 / "is my line up") ---
+    "connection_healthy_avg": {
+        "en": "✅ Your connection is up.\nIP: *{ip}* — average ping {avg}ms from our side.",
+        "af": "✅ Jou konneksie is op.\nIP: *{ip}* — gemiddelde ping {avg}ms van ons kant af.",
+    },
+    "connection_healthy": {
+        "en": "✅ Your connection is up.\nIP: *{ip}* — reachable from our side.",
+        "af": "✅ Jou konneksie is op.\nIP: *{ip}* — bereikbaar van ons kant af.",
+    },
+    "connection_offline": {
+        "en": "⚠️ I can't see an active session for your line. It looks like your connection is down from our side.",
+        "af": "⚠️ Ek kan nie 'n aktiewe sessie vir jou lyn sien nie. Dit lyk of jou konneksie van ons kant af af is.",
+    },
+    "connection_online_no_ping": {
+        "en": "⚠️ Your session is up (IP *{ip}*) but I can't reach your equipment when I ping it. There may be an issue on the local side.",
+        "af": "⚠️ Jou sessie is op (IP *{ip}*) maar ek kan nie jou toerusting bereik wanneer ek dit ping nie. Daar mag 'n probleem aan die plaaslike kant wees.",
+    },
+    "connection_online_no_ip": {
+        "en": "⚠️ Your session is up but I don't have an IP to ping. Something looks off with the connection.",
+        "af": "⚠️ Jou sessie is op maar ek het nie 'n IP om te ping nie. Iets lyk verkeerd met die konneksie.",
+    },
+    "connection_no_radius": {
+        "en": "⚠️ I couldn't run an automatic check on your line — your account doesn't have a RADIUS username/MAC configured.",
+        "af": "⚠️ Ek kon nie 'n outomatiese toets op jou lyn uitvoer nie — jou rekening het nie 'n RADIUS-gebruikersnaam/MAC opgestel nie.",
+    },
+    "connection_error": {
+        "en": "⚠️ I couldn't run the connection check right now.",
+        "af": "⚠️ Ek kon nie nou die konneksietoets uitvoer nie.",
+    },
+    "connection_offer_ticket": {
+        "en": "Would you like me to open a *support ticket* so our team can take a look?\nReply *yes* to log a ticket, or *no* to skip.",
+        "af": "Wil jy hê ek moet 'n *ondersteuningskaartjie* oopmaak sodat ons span kan kyk?\nAntwoord *ja* om 'n kaartjie aan te teken, of *nee* om oor te slaan.",
+    },
+    "connection_ticket_created": {
+        "en": "✅ Support ticket *#{ticket}* logged. Our team will follow up shortly.",
+        "af": "✅ Ondersteuningskaartjie *#{ticket}* aangeteken. Ons span sal binnekort opvolg.",
+    },
 }
 
 

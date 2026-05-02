@@ -38,6 +38,44 @@ def _append_followup_menu(reply: str, lang: str) -> str:
     return f"{reply}\n\n{followup}\n\n{menu_body}"
 
 
+def _connection_ticket_context(data: dict | None) -> str:
+    """Build a one-line context string used in the connectivity ticket body."""
+    if not data:
+        return "connection_check_failed"
+    if not data.get("is_online"):
+        if data.get("reason"):
+            return f"offline: {data.get('reason')}"
+        return "offline"
+    ping = data.get("ping")
+    if ping is None:
+        return f"online_no_ip (radius_session_id={data.get('session_start') or '?'})"
+    if not ping.get("success"):
+        return f"ping_failed ip={data.get('ip_address') or '?'}"
+    return "ok"
+
+
+def _finalise_action_reply(session_store, from_number: str, action_reply: str,
+                           result, lang: str) -> str:
+    """Decide whether to append the main menu or a connection-ticket offer
+    after an action runs. Returns the final reply text.
+
+    For a connection_check that found an outage, appends the support-ticket
+    offer and arms the awaiting_connection_ticket_offer flag so the next
+    inbound message routes to _handle_connection_ticket_offer.
+    """
+    if not result.success or result.needs_client:
+        return action_reply
+
+    if result.data and result.data.get("needs_ticket_offer"):
+        ctx = _connection_ticket_context(result.data)
+        session_store.offer_connection_ticket(from_number, ctx)
+        offer = t(lang, "connection_offer_ticket")
+        return f"{action_reply}\n\n{offer}"
+
+    session_store.set_menu(from_number, "main_menu")
+    return _append_followup_menu(action_reply, lang)
+
+
 async def handle_whatsapp_message(
     session_store: WhatsAppSessionStore,
     message_id: str,
@@ -91,6 +129,10 @@ async def handle_whatsapp_message(
     if session.awaiting_unlinked_ticket_description:
         return await _handle_unlinked_ticket_description(
             session_store, session, from_number, body, lang
+        )
+    if session.awaiting_connection_ticket_offer:
+        return await _handle_connection_ticket_offer(
+            session_store, session, from_number, body, client_name, lang
         )
 
     # 3b. Check if we're awaiting email verification (account security)
@@ -192,10 +234,8 @@ async def handle_whatsapp_message(
     # 8. Format the action reply
     action_reply = format_wa_reply(result, client_name, lang)
 
-    # 8a. Append follow-up menu after successful data replies
-    if result.success and not result.needs_client:
-        action_reply = _append_followup_menu(action_reply, lang)
-        session_store.set_menu(from_number, "main_menu")
+    # 8a. Append follow-up menu — or a ticket offer if connection check failed
+    action_reply = _finalise_action_reply(session_store, from_number, action_reply, result, lang)
 
     # 9. Combine greeting + action if this is the first message with an intent
     if reply_parts:
@@ -290,10 +330,8 @@ async def _handle_menu_selection(
 
     reply = format_wa_reply(result, client_name, lang)
 
-    # Append follow-up menu after successful data replies
-    if result.success and not result.needs_client:
-        reply = _append_followup_menu(reply, lang)
-        session_store.set_menu(from_number, "main_menu")
+    # Append follow-up menu — or a ticket offer if connection check failed
+    reply = _finalise_action_reply(session_store, from_number, reply, result, lang)
 
     # Avoid repeating identical replies
     if reply == session.last_reply:
@@ -664,6 +702,68 @@ async def _handle_unlinked_ticket_offer(
 
     # Anything else — re-prompt
     reply = t(lang, "link_offer_ticket")
+    session_store.update_after_reply(from_number, body, reply)
+    return reply
+
+
+async def _handle_connection_ticket_offer(
+    session_store: WhatsAppSessionStore,
+    session,
+    from_number: str,
+    body: str,
+    client_name: str,
+    lang: str,
+) -> str:
+    """User said yes/no after a failed connection check. Yes opens a
+    connectivity-category ticket using the stashed diagnostic context."""
+    answer = _trim_link_input(body).lower()
+
+    if answer in _TICKET_NO_WORDS:
+        session_store.clear_connection_ticket_state(from_number)
+        reply = t(lang, "link_ticket_cancelled") + "\n\n" + render_main_menu(client_name, lang)
+        session_store.set_menu(from_number, "main_menu")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    if answer not in _TICKET_YES_WORDS:
+        # Re-prompt
+        reply = t(lang, "connection_offer_ticket")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    context = session.connection_ticket_context or "connection_check_failed"
+    session_store.clear_connection_ticket_state(from_number)
+
+    description = (
+        f"Customer ran a connection check from WhatsApp; assistant detected an issue.\n"
+        f"Diagnostic: {context}\n"
+        f"Source phone: {from_number}"
+    )
+
+    try:
+        result = billing_client.create_support_ticket(
+            client_id=session.client_id,
+            category="connectivity",
+            subject="Connection check failure",
+            message=description,
+            source="whatsapp",
+            source_phone=from_number,
+        )
+        if result.get("success"):
+            ticket_number = result.get("ticket_number", "")
+            confirmation = t(lang, "connection_ticket_created", ticket=ticket_number)
+            reply = confirmation + "\n\n" + render_main_menu(client_name, lang)
+            session_store.set_menu(from_number, "main_menu")
+            logger.info("Connection ticket %s created for %s (client_id=%s, context=%s)",
+                        ticket_number, from_number, session.client_id, context)
+        else:
+            logger.error("Connection ticket creation failed for %s: %s",
+                         from_number, result.get("error"))
+            reply = t(lang, "support_ticket_failed")
+    except Exception as e:
+        logger.error("Connection ticket error for %s: %s", from_number, e, exc_info=True)
+        reply = t(lang, "support_ticket_error")
+
     session_store.update_after_reply(from_number, body, reply)
     return reply
 
