@@ -212,6 +212,10 @@ _STRINGS = {
         "en": "I'm sorry, I couldn't log your enquiry right now. Please try again, or call our Harrismith team directly.",
         "af": "Jammer, ek kon nie nou jou navraag aanteken nie. Probeer asseblief weer, of bel ons Harrismith-span direk.",
     },
+    "website_lead_logged": {
+        "en": "Thanks {name}! ✅ Your enquiry has been received and logged as ticket *#{ticket}*.\n\nOur team will review your details and reach out on this WhatsApp number within 1 business day.",
+        "af": "Dankie {name}! ✅ Jou navraag is ontvang en aangeteken as kaartjie *#{ticket}*.\n\nOns span sal jou besonderhede deurkyk en binne 1 werksdag op hierdie WhatsApp-nommer kontak maak.",
+    },
     "support_ticket_failed": {
         "en": "I'm sorry, I couldn't create the ticket right now. Please try again in a moment, or contact us directly for support.",
         "af": "Ek is jammer, ek kon nie nou die kaartjie skep nie. Probeer asseblief weer oor 'n oomblik, of kontak ons direk vir ondersteuning.",
