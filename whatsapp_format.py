@@ -131,6 +131,15 @@ def _format_invoice_link(data: dict, lang: str) -> str:
     error = data.get("error", "")
     if error == "no_unpaid_invoices":
         return t(lang, "invoice_link_none")
+    if error == "invoice_not_found":
+        requested = data.get("requested", "")
+        return t(lang, "invoice_not_found", requested=requested)
+    if error == "multiple_invoices_match":
+        candidates = data.get("candidates") or []
+        # Show up to 3 candidates so the user can pick a more specific code.
+        listing = ", ".join(f"*{c}*" for c in candidates[:3])
+        return t(lang, "invoice_multiple_match",
+                 requested=data.get("requested", ""), candidates=listing)
     return t(lang, "invoice_send_failed")
 
 

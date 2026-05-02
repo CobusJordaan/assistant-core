@@ -38,7 +38,7 @@ Intents:
     "subject":  4-8 word summary of what they want (in English regardless of message language; staff inbox is English)
 - "balance"        — asking what they owe / their account balance
 - "invoices"       — asking which invoices are unpaid / overdue / outstanding
-- "invoice_pdf"    — wants their invoice sent / emailed / a PDF / a copy / a link
+- "invoice_pdf"    — wants their invoice sent / emailed / a PDF / a copy / a link. If the customer specifies a particular invoice (e.g. "send me invoice 233372", "kan jy faktuur HRS-2602-0030 stuur") set "invoice_number" to the exact code or numeric id they typed (no extra words). Omit "invoice_number" if no invoice is named.
 - "statement_pdf"  — wants their statement sent
 - "summary"        — wants an account overview / their package details / what they're paying for
 - "connection"     — wants their internet line / connection / wifi tested
@@ -49,7 +49,7 @@ Intents:
 Choose "support_ticket" whenever the customer is asking for a human-action change or a question the bot cannot answer from billing data. The word "faktuur"/"invoice" alone is NOT enough to choose invoice_pdf — only choose invoice_pdf if they actually want to receive their invoice. "I need help with an invoice" / "ek het hulp nodig met 'n faktuur" is a support_ticket.
 
 Return ONLY this JSON shape, with only the relevant keys:
-{"intent": "...", "category": "...", "subject": "...", "reply": "..."}"""
+{"intent": "...", "category": "...", "subject": "...", "invoice_number": "...", "reply": "..."}"""
 
 
 VALID_INTENTS = frozenset({
@@ -111,6 +111,15 @@ def _normalise(parsed: dict | None) -> dict:
         subject = subject.strip()[:200] or "Customer request"
         out["category"] = category
         out["subject"] = subject
+
+    elif intent == "invoice_pdf":
+        inv_num = parsed.get("invoice_number") or ""
+        if isinstance(inv_num, str):
+            cleaned = inv_num.strip().strip("*").strip()
+            # Accept anything that looks like an invoice code: alphanumerics +
+            # optional dashes/slashes, 3-50 chars, no whitespace.
+            if cleaned and 3 <= len(cleaned) <= 50 and not any(c.isspace() for c in cleaned):
+                out["invoice_number"] = cleaned
 
     elif intent == "smalltalk":
         reply = parsed.get("reply") or ""

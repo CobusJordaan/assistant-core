@@ -121,7 +121,12 @@ async def _route_llm_intent(
     # ---- Reuse existing pattern-action pipeline ----
     if intent in _LLM_TO_PATTERN_ACTION:
         action = _LLM_TO_PATTERN_ACTION[intent]
-        synthetic = WhatsAppIntent(action=action, confidence=1.0, raw_message=body)
+        entities: dict = {}
+        if intent == "invoice_pdf" and llm_result.get("invoice_number"):
+            entities["invoice_number"] = llm_result["invoice_number"]
+        synthetic = WhatsAppIntent(
+            action=action, confidence=1.0, raw_message=body, entities=entities,
+        )
         session_store.clear_menu(from_number)
         result = await execute_action(
             synthetic, session.client_id, session.client_name, from_number, lang,

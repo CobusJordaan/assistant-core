@@ -107,14 +107,23 @@ class BillingClient:
         return resp.json()
 
     def send_invoice_whatsapp(self, client_id: int, phone_number: str = "",
-                              language: str = "") -> dict:
-        """Send the latest unpaid invoice to a client via WhatsApp."""
+                              language: str = "", invoice_number: str = "") -> dict:
+        """Send a client's invoice via WhatsApp.
+
+        With `invoice_number` set, the billing API tries an exact match first
+        (case-insensitive), then a suffix match (so "233372" finds
+        "ININ233372"). With it omitted, the latest unpaid invoice is sent —
+        the original behaviour. Returns the API JSON; possible failure
+        reasons include `invoice_not_found` and `multiple_invoices_match`.
+        """
         self._check_configured()
         payload = {"client_id": client_id}
         if phone_number:
             payload["phone_number"] = phone_number
         if language:
             payload["language"] = language
+        if invoice_number:
+            payload["invoice_number"] = invoice_number
         resp = httpx.post(
             f"{self.base_url}/api/assistant/send-invoice-whatsapp",
             json=payload,

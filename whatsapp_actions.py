@@ -61,7 +61,9 @@ async def execute_action(intent: WhatsAppIntent, client_id: int | None,
                     action=action, success=False, error="no_client",
                     needs_client=True, display_hint=_HINT_MAP.get(action, "unknown"),
                 )
-            return await _execute_client_action(action, client_id, from_number, lang)
+            return await _execute_client_action(
+                action, client_id, from_number, lang, intent.entities or {},
+            )
 
         # --- Latency check ---
         if action == "latency_check":
@@ -97,8 +99,15 @@ async def execute_action(intent: WhatsAppIntent, client_id: int | None,
 
 async def _execute_client_action(action: str, client_id: int,
                                  from_number: str = "",
-                                 lang: str = "en") -> ActionResult:
-    """Run a billing API call that requires client context."""
+                                 lang: str = "en",
+                                 entities: dict | None = None) -> ActionResult:
+    """Run a billing API call that requires client context.
+
+    `entities` carries optional parameters extracted by the intent layer —
+    e.g. `invoice_number` from the LLM classifier when the customer named
+    a specific invoice ("send me invoice 233372").
+    """
+    entities = entities or {}
 
     if action == "balance_check":
         result = billing_client.client_balance(client_id)
@@ -125,13 +134,23 @@ async def _execute_client_action(action: str, client_id: int,
         )
 
     if action == "send_invoice_link":
+        invoice_number = (entities.get("invoice_number") or "").strip()
         try:
-            result = billing_client.send_invoice_whatsapp(client_id, phone_number=from_number, language=lang)
-            # "no_unpaid_invoices" is not a failure — it's valid info
-            is_ok = result.get("success", False) or result.get("error") == "no_unpaid_invoices"
+            result = billing_client.send_invoice_whatsapp(
+                client_id,
+                phone_number=from_number,
+                language=lang,
+                invoice_number=invoice_number,
+            )
+            # "no_unpaid_invoices" / "invoice_not_found" / "multiple_invoices_match"
+            # are valid info, not server failures.
+            error = result.get("error")
+            is_ok = result.get("success", False) or error in (
+                "no_unpaid_invoices", "invoice_not_found", "multiple_invoices_match",
+            )
             return ActionResult(
                 action=action, success=is_ok,
-                data=result, error=result.get("error"),
+                data=result, error=error,
                 display_hint="invoice_link",
             )
         except Exception as e:

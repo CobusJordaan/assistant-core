@@ -136,6 +136,14 @@ _STRINGS = {
         "en": "You have no unpaid invoices on your account \u2705",
         "af": "Jy het geen onbetaalde fakture op jou rekening nie \u2705",
     },
+    "invoice_not_found": {
+        "en": "I couldn't find an invoice matching *{requested}* on your account. Please check the number and try again.",
+        "af": "Ek kon nie 'n faktuur kry wat by *{requested}* pas op jou rekening nie. Kontroleer asseblief die nommer en probeer weer.",
+    },
+    "invoice_multiple_match": {
+        "en": "I found more than one invoice matching *{requested}*: {candidates}.\nPlease send the full invoice number.",
+        "af": "Ek het meer as een faktuur gevind wat by *{requested}* pas: {candidates}.\nStuur asseblief die volle faktuurnommer.",
+    },
 
     # --- Statement link ---
     "statement_sent": {
