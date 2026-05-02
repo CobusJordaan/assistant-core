@@ -178,6 +178,10 @@ _STRINGS = {
         "en": "Your support ticket *#{ticket}* has been created.\nCategory: {category}\n\nOur team will follow up with you shortly.",
         "af": "Jou ondersteuningskaartjie *#{ticket}* is geskep.\nKategorie: {category}\n\nOns span sal binnekort opvolg.",
     },
+    "ai_ticket_created": {
+        "en": "Got it — I've logged support ticket *#{ticket}* for you:\n_“{subject}”_\n\nOur team will follow up on this WhatsApp number shortly.",
+        "af": "Reg so — ek het ondersteuningskaartjie *#{ticket}* vir jou aangeteken:\n_“{subject}”_\n\nOns span sal binnekort op hierdie WhatsApp-nommer opvolg.",
+    },
     "support_ticket_failed": {
         "en": "I'm sorry, I couldn't create the ticket right now. Please try again in a moment, or contact us directly for support.",
         "af": "Ek is jammer, ek kon nie nou die kaartjie skep nie. Probeer asseblief weer oor 'n oomblik, of kontak ons direk vir ondersteuning.",

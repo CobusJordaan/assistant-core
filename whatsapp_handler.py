@@ -7,6 +7,7 @@ from whatsapp_session import WhatsAppSessionStore
 from whatsapp_intent import classify_whatsapp_intent, WhatsAppIntent
 from whatsapp_actions import execute_action
 from whatsapp_format import format_wa_reply
+from whatsapp_llm import classify_with_llm
 from whatsapp_menu import (
     resolve_menu_selection,
     render_main_menu,
@@ -52,6 +53,102 @@ def _connection_ticket_context(data: dict | None) -> str:
     if not ping.get("success"):
         return f"ping_failed ip={data.get('ip_address') or '?'}"
     return "ok"
+
+
+_LLM_TO_PATTERN_ACTION = {
+    "balance": "balance_check",
+    "invoices": "unpaid_invoices",
+    "invoice_pdf": "send_invoice_link",
+    "statement_pdf": "send_statement_link",
+    "summary": "client_summary",
+    "connection": "connection_check",
+}
+
+
+async def _route_llm_intent(
+    session_store: WhatsAppSessionStore,
+    session,
+    from_number: str,
+    body: str,
+    client_name: str,
+    lang: str,
+    llm_result: dict,
+) -> str:
+    """Execute the action chosen by the LLM classifier.
+
+    Supports:
+      - support_ticket: auto-creates a ticket via the billing API using the
+        LLM-supplied subject + category and the verbatim message as the body.
+      - balance/invoices/invoice_pdf/statement_pdf/summary/connection: routes
+        through the standard `execute_action` pipeline so the reply uses the
+        same formatters and follow-up menu logic as the pattern-matched path.
+      - smalltalk: uses the LLM's short reply followed by the main menu.
+    """
+    intent = llm_result.get("intent", "unclear")
+
+    # ---- Support ticket auto-creation ----
+    if intent == "support_ticket":
+        category = llm_result.get("category", "general")
+        subject = (llm_result.get("subject") or "Customer request").strip() or "Customer request"
+        try:
+            ticket = billing_client.create_support_ticket(
+                client_id=session.client_id,
+                category=category,
+                subject=subject,
+                message=body,
+                source="whatsapp",
+                source_phone=from_number,
+            )
+            if ticket.get("success"):
+                ticket_number = ticket.get("ticket_number", "")
+                base = t(lang, "ai_ticket_created", ticket=ticket_number, subject=subject)
+                reply = _append_followup_menu(base, lang)
+                session_store.set_menu(from_number, "main_menu")
+                logger.info("LLM routed -> ticket %s (%s/%s) for %s",
+                            ticket_number, category, subject, from_number)
+                session_store.update_after_reply(from_number, body, reply)
+                return reply
+            logger.warning("LLM-routed ticket create failed for %s: %s",
+                           from_number, ticket.get("error"))
+        except Exception as e:
+            logger.error("LLM-routed ticket create error for %s: %s",
+                         from_number, e, exc_info=True)
+        reply = t(lang, "support_ticket_failed") + "\n\n" + render_main_menu(client_name, lang)
+        session_store.set_menu(from_number, "main_menu")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    # ---- Reuse existing pattern-action pipeline ----
+    if intent in _LLM_TO_PATTERN_ACTION:
+        action = _LLM_TO_PATTERN_ACTION[intent]
+        synthetic = WhatsAppIntent(action=action, confidence=1.0, raw_message=body)
+        session_store.clear_menu(from_number)
+        result = await execute_action(
+            synthetic, session.client_id, session.client_name, from_number, lang,
+        )
+        if result.needs_client:
+            session_store.set_awaiting_account_lookup(from_number)
+        action_reply = format_wa_reply(result, client_name, lang)
+        action_reply = _finalise_action_reply(session_store, from_number, action_reply, result, lang)
+        if action_reply == session.last_reply:
+            action_reply = t(lang, "repeat_reply")
+        session_store.update_after_reply(from_number, body, action_reply)
+        return action_reply
+
+    # ---- Smalltalk: LLM-generated short reply + menu ----
+    if intent == "smalltalk":
+        text = (llm_result.get("reply") or "").strip()
+        if text:
+            reply = text + "\n\n" + render_menu("main_menu", "", lang)
+            session_store.set_menu(from_number, "main_menu")
+            session_store.update_after_reply(from_number, body, reply)
+            return reply
+
+    # ---- Unclear / fallback: show the menu ----
+    reply = render_main_menu(client_name, lang)
+    session_store.set_menu(from_number, "main_menu")
+    session_store.update_after_reply(from_number, body, reply)
+    return reply
 
 
 def _finalise_action_reply(session_store, from_number: str, action_reply: str,
@@ -214,6 +311,25 @@ async def handle_whatsapp_message(
         "WA intent: from=%s action=%s conf=%.2f lang=%s msg=%s",
         from_number, intent.action, intent.confidence, lang, body[:80],
     )
+
+    # 5b. LLM co-classifier for free-form sentences from linked clients.
+    #     The cheap regex matcher is greedy (e.g. "faktuur" anywhere wins),
+    #     so for multi-word messages or pattern-misses we ask Ollama to
+    #     re-classify with surrounding context. This is what catches things
+    #     like "kan jy 'n ticket oopmaak ek moet my bank besonderhede
+    #     verander" → support_ticket → auto-creates the ticket.
+    if (session.client_id
+            and intent.action != "greeting"
+            and (intent.action == "unknown" or len(body.split()) >= 4)):
+        try:
+            llm_result = await classify_with_llm(body, client, lang)
+        except Exception as e:
+            logger.warning("LLM classify failed (non-fatal): %s", e)
+            llm_result = {"intent": "unclear"}
+        if llm_result.get("intent") not in (None, "unclear"):
+            return await _route_llm_intent(
+                session_store, session, from_number, body, client_name, lang, llm_result
+            )
 
     # 6. Build reply
     reply_parts: list[str] = []
