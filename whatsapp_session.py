@@ -185,11 +185,27 @@ class WhatsAppSessionStore:
             if session.is_expired:
                 logger.info("WA session expired for %s, resetting", from_number)
                 return self._reset_session(from_number, client_id, client_name, now)
-            # Update client info if changed (including clearing when number removed)
-            # But don't let billing's None overwrite a manually-verified client link
+            # Sync client info from billing's phone match. Billing now consults
+            # client_whatsapp_links, so its reply is authoritative — a None
+            # means the link was removed (staff revocation or expiry) and we
+            # should drop any stale client_id, manually_linked flag, and
+            # language preference left over from the previous link.
             if session.client_id != client_id:
-                if client_id is None and session.manually_linked:
-                    logger.debug("Keeping manually-linked client %s for %s", session.client_id, from_number)
+                if client_id is None:
+                    self._conn.execute(
+                        """UPDATE whatsapp_sessions
+                           SET client_id = NULL, client_name = '',
+                               manually_linked = 0, language = '',
+                               updated_at = ?
+                           WHERE from_number = ?""",
+                        (now, from_number),
+                    )
+                    self._conn.commit()
+                    logger.info("WA session cleared (link revoked) for %s", from_number)
+                    session.client_id = None
+                    session.client_name = ""
+                    session.manually_linked = False
+                    session.language = ""
                 else:
                     self._conn.execute(
                         "UPDATE whatsapp_sessions SET client_id = ?, client_name = ?, updated_at = ? WHERE from_number = ?",
