@@ -759,6 +759,49 @@ async def _handle_language_choice(
     return reply
 
 
+async def _unlinked_ticket_from_link_flow(
+    session_store: WhatsAppSessionStore,
+    from_number: str,
+    body: str,
+    lang: str,
+    llm_result: dict,
+) -> str:
+    """User asked for support mid-link-flow ("please open a ticket, I don't
+    have my account number"). Drop out of the link flow, log an unlinked
+    ticket immediately, and confirm — no further prompts needed."""
+    subject = (llm_result.get("subject") or "Customer request").strip() or "Customer request"
+    category = llm_result.get("category", "general")
+
+    # Exit the link flow — the user has chosen another path
+    session_store.clear_link_state(from_number)
+
+    try:
+        ticket = billing_client.create_support_ticket(
+            client_id=None,
+            category=category,
+            subject=subject,
+            message=body,
+            source="whatsapp",
+            source_phone=from_number,
+        )
+        if ticket.get("success"):
+            ticket_number = ticket.get("ticket_number", "")
+            reply = t(lang, "link_ticket_unlinked_created", ticket=ticket_number)
+            logger.info("LLM-routed unlinked ticket %s created mid-link-flow for %s (subj=%r)",
+                        ticket_number, from_number, subject)
+            session_store.update_after_reply(from_number, body, reply)
+            return reply
+        logger.warning("Unlinked ticket create failed mid-link-flow for %s: %s",
+                       from_number, ticket.get("error"))
+    except Exception as e:
+        logger.error("Unlinked ticket error mid-link-flow for %s: %s",
+                     from_number, e, exc_info=True)
+
+    reply = t(lang, "support_ticket_failed")
+    session_store.update_after_reply(from_number, body, reply)
+    return reply
+
+
 async def _handle_link_client_number(
     session_store: WhatsAppSessionStore,
     session,
@@ -784,6 +827,23 @@ async def _handle_link_client_number(
         return reply
 
     if not _looks_like_account_ref(value):
+        # The user typed something that isn't an account number. If it's a
+        # multi-word sentence, the LLM gets a chance to detect "I'm actually
+        # asking for help" intents — e.g. "Kan jy 'n kaartjie oop maak ek het
+        # nie my Rek nommer nie" (please open a ticket, I don't have my
+        # account number) — and route to an unlinked ticket instead of
+        # looping the user back to the same prompt.
+        if len(value.split()) >= 4:
+            try:
+                llm = await classify_with_llm(value, None, lang)
+            except Exception as e:
+                logger.warning("LLM classify in link flow failed: %s", e)
+                llm = {"intent": "unclear"}
+            if llm.get("intent") == "support_ticket":
+                return await _unlinked_ticket_from_link_flow(
+                    session_store, from_number, body, lang, llm,
+                )
+
         logger.info("Identity-link: %s sent invalid account_ref=%r, re-prompting",
                     from_number, value)
         reply = t(lang, "link_invalid_account_ref")
