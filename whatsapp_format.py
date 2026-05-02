@@ -119,7 +119,7 @@ def _format_summary(data: dict, lang: str) -> str:
         pkg_name = pkg.get("package_name", "")
         dl = pkg.get("download_speed", "?")
         ul = pkg.get("upload_speed", "?")
-        lines.append(f"Package: {pkg_name} ({dl}/{ul} Mbps)")
+        lines.append(t(lang, "summary_package", pkg_name=pkg_name, dl=dl, ul=ul))
     return "\n".join(lines)
 
 

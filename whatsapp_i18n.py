@@ -118,6 +118,10 @@ _STRINGS = {
         "en": "Outstanding: *R{amount}*",
         "af": "Uitstaande: *R{amount}*",
     },
+    "summary_package": {
+        "en": "Package: {pkg_name} ({dl}/{ul} Mbps)",
+        "af": "Pakket: {pkg_name} ({dl}/{ul} Mbps)",
+    },
 
     # --- Invoice link ---
     "invoice_sent": {
