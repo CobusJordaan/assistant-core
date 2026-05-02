@@ -53,6 +53,8 @@ _MENU_COLUMNS = [
     # Connection-check ticket offer after a failed RADIUS/ping check
     ("awaiting_connection_ticket_offer", "INTEGER DEFAULT 0"),
     ("connection_ticket_context", "TEXT DEFAULT ''"),
+    # First-touch language choice (unlinked number, no preferred lang yet)
+    ("awaiting_language_choice", "INTEGER DEFAULT 0"),
 ]
 
 
@@ -71,6 +73,7 @@ class WhatsAppSession:
         "pending_link_client_number", "pending_link_contract_id",
         "awaiting_unlinked_ticket_offer", "awaiting_unlinked_ticket_description",
         "awaiting_connection_ticket_offer", "connection_ticket_context",
+        "awaiting_language_choice",
         "created_at", "updated_at",
     )
 
@@ -95,7 +98,8 @@ class WhatsAppSession:
                  awaiting_unlinked_ticket_offer: bool = False,
                  awaiting_unlinked_ticket_description: bool = False,
                  awaiting_connection_ticket_offer: bool = False,
-                 connection_ticket_context: str = ""):
+                 connection_ticket_context: str = "",
+                 awaiting_language_choice: bool = False):
         self.from_number = from_number
         self.client_id = client_id
         self.client_name = client_name
@@ -123,6 +127,7 @@ class WhatsAppSession:
         self.awaiting_unlinked_ticket_description = awaiting_unlinked_ticket_description
         self.awaiting_connection_ticket_offer = awaiting_connection_ticket_offer
         self.connection_ticket_context = connection_ticket_context
+        self.awaiting_language_choice = awaiting_language_choice
         self.created_at = created_at
         self.updated_at = updated_at
 
@@ -478,6 +483,30 @@ class WhatsAppSessionStore:
         )
         self._conn.commit()
 
+    # --- First-touch language choice ---
+
+    def set_awaiting_language_choice(self, from_number: str):
+        """Flag that we're waiting for the user to pick a language."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET awaiting_language_choice = 1, updated_at = ?
+               WHERE from_number = ?""",
+            (now, from_number),
+        )
+        self._conn.commit()
+
+    def clear_language_choice(self, from_number: str):
+        """Clear the language-choice waiting flag once a choice is made."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET awaiting_language_choice = 0, updated_at = ?
+               WHERE from_number = ?""",
+            (now, from_number),
+        )
+        self._conn.commit()
+
     def clear_connection_ticket_state(self, from_number: str):
         """Clear connection-ticket offer state and stored context."""
         now = datetime.now(timezone.utc).isoformat()
@@ -556,6 +585,7 @@ class WhatsAppSessionStore:
                    awaiting_unlinked_ticket_description = 0,
                    awaiting_connection_ticket_offer = 0,
                    connection_ticket_context = '',
+                   awaiting_language_choice = 0,
                    language = '',
                    updated_at = ?
                WHERE from_number = ?""",
@@ -601,4 +631,5 @@ class WhatsAppSessionStore:
             awaiting_unlinked_ticket_description=bool(_col("awaiting_unlinked_ticket_description") or 0),
             awaiting_connection_ticket_offer=bool(_col("awaiting_connection_ticket_offer") or 0),
             connection_ticket_context=_col("connection_ticket_context") or "",
+            awaiting_language_choice=bool(_col("awaiting_language_choice") or 0),
         )

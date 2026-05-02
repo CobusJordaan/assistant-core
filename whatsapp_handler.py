@@ -126,6 +126,12 @@ async def handle_whatsapp_message(
             session.language = lang
     logger.info("WA language: from=%s effective=%s", from_number, lang)
 
+    # 3a-pre. First-touch language choice (before any link prompt)
+    if session.awaiting_language_choice:
+        return await _handle_language_choice(
+            session_store, session, from_number, body
+        )
+
     # 3a. Strict identity-link flow (for numbers not in clients or whatsapp_links)
     if session.awaiting_link_client_number:
         return await _handle_link_client_number(
@@ -172,9 +178,19 @@ async def handle_whatsapp_message(
 
     # 3e. Cold entry from an unlinked number → kick off the strict identity flow.
     #     The Twilio webhook calls billing's phone matcher (which now checks
-    #     client_whatsapp_links first); if that returns no client, we land here
-    #     and ask for account number → contract ID → email to link the number.
+    #     client_whatsapp_links first); if that returns no client, we land here.
+    #     If the session has no language preference yet (fresh contact, or a
+    #     prior link was revoked) we first ask the user to pick a language,
+    #     then the link prompt is shown in their chosen language.
     if not client_id:
+        if not session.language:
+            session_store.set_awaiting_language_choice(from_number)
+            session_store.mark_greeted(from_number)
+            reply = t("en", "language_choice_prompt")
+            logger.info("Language choice requested for unlinked number %s", from_number)
+            session_store.update_after_reply(from_number, body, reply)
+            return reply
+
         session_store.start_identity_link(from_number)
         session_store.mark_greeted(from_number)
         reply = t(lang, "link_intro")
@@ -555,9 +571,76 @@ _LINK_CANCEL_WORDS = {"menu", "cancel", "stop", "exit", "0"}
 _TICKET_YES_WORDS = {"yes", "y", "ja", "yep", "ok", "okay"}
 _TICKET_NO_WORDS = {"no", "n", "nee", "cancel", "stop"}
 
+# Greetings + obvious noise that shouldn't be accepted as an account number.
+# Account numbers / contract IDs in this CRM are alphanumeric and >= 3 chars
+# (e.g. DRA0011, SDA000), so a bare "hi" / "1" / "ja" is clearly a misfire.
+_ACCOUNT_REF_NOISE_WORDS = {
+    "hi", "hello", "hey", "howzit", "hallo", "haai", "hoi", "yo", "sup",
+    "more", "môre", "dag", "ja", "yes", "no", "nee", "ok", "okay",
+    "thanks", "thank", "dankie", "help",
+}
+
 
 def _trim_link_input(body: str) -> str:
     return body.strip().strip("*").strip()
+
+
+def _looks_like_account_ref(value: str) -> bool:
+    """Cheap sanity check before treating a message as a client_number /
+    contract_id. Filters bare greetings, single-digit menu replies, and
+    too-short noise so the user gets re-prompted instead of being marched
+    straight to the email step with garbage."""
+    v = (value or "").strip()
+    if not v:
+        return False
+    # Single digit / very short numeric — probably a menu reply, not an ID
+    if v.isdigit() and len(v) < 4:
+        return False
+    # Greeting / generic acknowledgement
+    if v.lower() in _ACCOUNT_REF_NOISE_WORDS:
+        return False
+    # Real account refs in this CRM are at least 3 alphanumeric chars
+    if len(v) < 3:
+        return False
+    if not any(c.isalnum() for c in v):
+        return False
+    return True
+
+
+_LANG_CHOICE_EN = {"1", "en", "eng", "english", "engels"}
+_LANG_CHOICE_AF = {"2", "af", "afr", "afrikaans"}
+
+
+async def _handle_language_choice(
+    session_store: WhatsAppSessionStore,
+    session,
+    from_number: str,
+    body: str,
+) -> str:
+    """Resolve the first-touch language pick, then fall through to the link
+    prompt in the chosen language. Anything unrecognised re-prompts."""
+    raw = (body or "").strip().strip("*").strip().lower()
+
+    chosen: str | None = None
+    if raw in _LANG_CHOICE_EN:
+        chosen = "en"
+    elif raw in _LANG_CHOICE_AF:
+        chosen = "af"
+
+    if chosen is None:
+        reply = t("en", "language_choice_invalid")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    session_store.set_language(from_number, chosen)
+    session.language = chosen
+    session_store.clear_language_choice(from_number)
+    session_store.start_identity_link(from_number)
+    reply = t(chosen, "link_intro")
+    logger.info("Language chosen for %s: %s — proceeding to link_intro",
+                from_number, chosen)
+    session_store.update_after_reply(from_number, body, reply)
+    return reply
 
 
 async def _handle_link_client_number(
@@ -581,6 +664,13 @@ async def _handle_link_client_number(
 
     if not value:
         reply = t(lang, "link_intro")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    if not _looks_like_account_ref(value):
+        logger.info("Identity-link: %s sent invalid account_ref=%r, re-prompting",
+                    from_number, value)
+        reply = t(lang, "link_invalid_account_ref")
         session_store.update_after_reply(from_number, body, reply)
         return reply
 

@@ -249,10 +249,42 @@ _STRINGS = {
         "af": "Dit stem nie ooreen met die e-pos op hierdie rekening nie. Vir sekuriteit kan ek nie rekeninginligting verskaf nie.\n\nStuur asseblief *Hi* om weer te probeer.",
     },
 
+    # --- First-touch language choice (unlinked number, no preference yet) ---
+    # Single key returns the same bilingual content in both lang slots since
+    # we don't know the user's language yet at this point in the flow.
+    "language_choice_prompt": {
+        "en": (
+            "Hi \U0001f44b Welcome / Welkom\n\n"
+            "Please choose your language / Kies asseblief jou taal:\n\n"
+            "*1.* English\n"
+            "*2.* Afrikaans"
+        ),
+        "af": (
+            "Hi \U0001f44b Welcome / Welkom\n\n"
+            "Please choose your language / Kies asseblief jou taal:\n\n"
+            "*1.* English\n"
+            "*2.* Afrikaans"
+        ),
+    },
+    "language_choice_invalid": {
+        "en": (
+            "Reply with *1* for English or *2* for Afrikaans.\n"
+            "Antwoord met *1* vir Engels of *2* vir Afrikaans."
+        ),
+        "af": (
+            "Reply with *1* for English or *2* for Afrikaans.\n"
+            "Antwoord met *1* vir Engels of *2* vir Afrikaans."
+        ),
+    },
+
     # --- Strict identity-link flow (number not linked) ---
     "link_intro": {
         "en": "Hi \U0001f44b This WhatsApp number isn't linked to an account on our system yet.\n\nTo link it, please send your *account number* or *contract ID*.",
         "af": "Hallo \U0001f44b Hierdie WhatsApp-nommer is nog nie aan 'n rekening op ons stelsel gekoppel nie.\n\nOm dit te koppel, stuur asseblief jou *rekeningnommer* of *kontrak-ID*.",
+    },
+    "link_invalid_account_ref": {
+        "en": "That doesn't look like an account number or contract ID. Please send the code shown on your invoice (e.g. *DRA0011* or *SDA000*).",
+        "af": "Dit lyk nie soos 'n rekeningnommer of kontrak-ID nie. Stuur asseblief die kode op jou faktuur (bv. *DRA0011* of *SDA000*).",
     },
     "link_ask_contract": {
         "en": "Thanks. Now please send your *contract ID* for the same account.",
