@@ -244,6 +244,48 @@ _STRINGS = {
         "en": "That doesn't match the email on this account. For security, I can't provide account information.\n\nPlease send *Hi* to try again.",
         "af": "Dit stem nie ooreen met die e-pos op hierdie rekening nie. Vir sekuriteit kan ek nie rekeninginligting verskaf nie.\n\nStuur asseblief *Hi* om weer te probeer.",
     },
+
+    # --- Strict identity-link flow (number not linked) ---
+    "link_intro": {
+        "en": "Hi \U0001f44b This WhatsApp number isn't linked to an account on our system yet.\n\nTo link it, please send your *account number* (e.g. ACC123).",
+        "af": "Hallo \U0001f44b Hierdie WhatsApp-nommer is nog nie aan 'n rekening op ons stelsel gekoppel nie.\n\nOm dit te koppel, stuur asseblief jou *rekeningnommer* (bv. ACC123).",
+    },
+    "link_ask_contract": {
+        "en": "Thanks. Now please send your *contract ID* for the same account.",
+        "af": "Dankie. Stuur nou asseblief jou *kontrak-ID* vir dieselfde rekening.",
+    },
+    "link_ask_email": {
+        "en": "Almost done. Please send the *email address* on file for this account.",
+        "af": "Amper klaar. Stuur asseblief die *e-posadres* op rekord vir hierdie rekening.",
+    },
+    "link_success": {
+        "en": "\u2705 Verified and linked! Welcome, {name}.\nThis WhatsApp number is now connected to account *{number}*.\n\n",
+        "af": "\u2705 Geverifieer en gekoppel! Welkom, {name}.\nHierdie WhatsApp-nommer is nou aan rekening *{number}* gekoppel.\n\n",
+    },
+    "link_failed_number": {
+        "en": "I couldn't find an account that matches that account number and contract ID together.",
+        "af": "Ek kon nie 'n rekening kry wat ooreenstem met daardie rekeningnommer en kontrak-ID saam nie.",
+    },
+    "link_failed_email": {
+        "en": "That email doesn't match the one on file for this account.",
+        "af": "Daardie e-pos stem nie ooreen met die een op rekord vir hierdie rekening nie.",
+    },
+    "link_offer_ticket": {
+        "en": "Would you like me to open a *support ticket* so our team can get back to you?\nReply *yes* to continue, or *no* to cancel.",
+        "af": "Wil jy h\u00ea ek moet 'n *ondersteuningskaartjie* oopmaak sodat ons span kan terugkom na jou?\nAntwoord *ja* om voort te gaan, of *nee* om te kanselleer.",
+    },
+    "link_ticket_ask_description": {
+        "en": "Got it. Please describe briefly how we can help, and I'll log a ticket for our team to follow up.",
+        "af": "Reg so. Beskryf asseblief kortliks hoe ons kan help, en ek sal 'n kaartjie aanteken sodat ons span kan opvolg.",
+    },
+    "link_ticket_unlinked_created": {
+        "en": "Your support ticket *#{ticket}* has been logged. Our team will reach out on this WhatsApp number shortly.",
+        "af": "Jou ondersteuningskaartjie *#{ticket}* is aangeteken. Ons span sal binnekort op hierdie WhatsApp-nommer kontak maak.",
+    },
+    "link_ticket_cancelled": {
+        "en": "No problem. If you change your mind, send *Hi* to start over.",
+        "af": "Geen probleem nie. As jy van plan verander, stuur *Hi* om weer te begin.",
+    },
 }
 
 

@@ -135,6 +135,41 @@ class BillingClient:
         resp.raise_for_status()
         return resp.json()
 
+    def verify_client_identity(self, client_number: str, contract_id: str, email: str) -> dict:
+        """Strict identity check used by the WhatsApp linking flow.
+
+        All three values must resolve to the same client row. Returns the
+        billing API's JSON; matched=false replies include a reason code.
+        """
+        self._check_configured()
+        resp = httpx.post(
+            f"{self.base_url}/api/assistant/verify-client-identity",
+            json={
+                "client_number": client_number,
+                "contract_id": contract_id,
+                "email": email,
+            },
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def link_whatsapp(self, client_id: int, phone: str, profile_name: str = "") -> dict:
+        """Persist a verified WhatsApp number -> client mapping."""
+        self._check_configured()
+        payload = {"client_id": client_id, "phone": phone}
+        if profile_name:
+            payload["profile_name"] = profile_name
+        resp = httpx.post(
+            f"{self.base_url}/api/assistant/link-whatsapp",
+            json=payload,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def send_statement_whatsapp(self, client_id: int, phone_number: str = "",
                                 language: str = "") -> dict:
         """Send a statement to a client via WhatsApp."""

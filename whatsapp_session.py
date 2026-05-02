@@ -41,6 +41,15 @@ _MENU_COLUMNS = [
     ("pending_client_email", "TEXT DEFAULT ''"),
     ("manually_linked", "INTEGER DEFAULT 0"),
     ("language", "TEXT DEFAULT ''"),
+    # Strict identity-link flow (client_number + contract_id + email)
+    ("awaiting_link_client_number", "INTEGER DEFAULT 0"),
+    ("awaiting_link_contract_id", "INTEGER DEFAULT 0"),
+    ("awaiting_link_email", "INTEGER DEFAULT 0"),
+    ("pending_link_client_number", "TEXT DEFAULT ''"),
+    ("pending_link_contract_id", "TEXT DEFAULT ''"),
+    # Unlinked-ticket fallback after failed verification
+    ("awaiting_unlinked_ticket_offer", "INTEGER DEFAULT 0"),
+    ("awaiting_unlinked_ticket_description", "INTEGER DEFAULT 0"),
 ]
 
 
@@ -55,6 +64,9 @@ class WhatsAppSession:
         "awaiting_account_lookup", "awaiting_email_verification",
         "pending_client_id", "pending_client_name", "pending_client_email",
         "manually_linked", "language",
+        "awaiting_link_client_number", "awaiting_link_contract_id", "awaiting_link_email",
+        "pending_link_client_number", "pending_link_contract_id",
+        "awaiting_unlinked_ticket_offer", "awaiting_unlinked_ticket_description",
         "created_at", "updated_at",
     )
 
@@ -70,7 +82,14 @@ class WhatsAppSession:
                  pending_client_name: str = "",
                  pending_client_email: str = "",
                  manually_linked: bool = False,
-                 language: str = ""):
+                 language: str = "",
+                 awaiting_link_client_number: bool = False,
+                 awaiting_link_contract_id: bool = False,
+                 awaiting_link_email: bool = False,
+                 pending_link_client_number: str = "",
+                 pending_link_contract_id: str = "",
+                 awaiting_unlinked_ticket_offer: bool = False,
+                 awaiting_unlinked_ticket_description: bool = False):
         self.from_number = from_number
         self.client_id = client_id
         self.client_name = client_name
@@ -89,6 +108,13 @@ class WhatsAppSession:
         self.pending_client_email = pending_client_email
         self.manually_linked = manually_linked
         self.language = language
+        self.awaiting_link_client_number = awaiting_link_client_number
+        self.awaiting_link_contract_id = awaiting_link_contract_id
+        self.awaiting_link_email = awaiting_link_email
+        self.pending_link_client_number = pending_link_client_number
+        self.pending_link_contract_id = pending_link_contract_id
+        self.awaiting_unlinked_ticket_offer = awaiting_unlinked_ticket_offer
+        self.awaiting_unlinked_ticket_description = awaiting_unlinked_ticket_description
         self.created_at = created_at
         self.updated_at = updated_at
 
@@ -271,6 +297,126 @@ class WhatsAppSessionStore:
         )
         self._conn.commit()
 
+    # --- Strict identity-link flow (client_number + contract_id + email) ---
+
+    def start_identity_link(self, from_number: str):
+        """Begin the strict link flow — first ask for client_number."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET awaiting_link_client_number = 1,
+                   awaiting_link_contract_id = 0, awaiting_link_email = 0,
+                   pending_link_client_number = '', pending_link_contract_id = '',
+                   awaiting_unlinked_ticket_offer = 0,
+                   awaiting_unlinked_ticket_description = 0,
+                   updated_at = ?
+               WHERE from_number = ?""",
+            (now, from_number),
+        )
+        self._conn.commit()
+
+    def advance_link_to_contract_id(self, from_number: str, client_number: str):
+        """Stash the supplied client_number and ask for contract_id next."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET awaiting_link_client_number = 0,
+                   awaiting_link_contract_id = 1,
+                   pending_link_client_number = ?,
+                   updated_at = ?
+               WHERE from_number = ?""",
+            (client_number, now, from_number),
+        )
+        self._conn.commit()
+
+    def advance_link_to_email(self, from_number: str, contract_id: str):
+        """Stash the contract_id and ask for the account email next."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET awaiting_link_contract_id = 0,
+                   awaiting_link_email = 1,
+                   pending_link_contract_id = ?,
+                   updated_at = ?
+               WHERE from_number = ?""",
+            (contract_id, now, from_number),
+        )
+        self._conn.commit()
+
+    def confirm_identity_link(self, from_number: str, client_id: int, client_name: str):
+        """Verification succeeded — promote client and clear the link state."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET client_id = ?, client_name = ?, manually_linked = 1,
+                   awaiting_link_client_number = 0,
+                   awaiting_link_contract_id = 0,
+                   awaiting_link_email = 0,
+                   pending_link_client_number = '',
+                   pending_link_contract_id = '',
+                   updated_at = ?
+               WHERE from_number = ?""",
+            (client_id, client_name, now, from_number),
+        )
+        self._conn.commit()
+
+    def clear_link_state(self, from_number: str):
+        """Clear any in-progress identity-link state."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET awaiting_link_client_number = 0,
+                   awaiting_link_contract_id = 0,
+                   awaiting_link_email = 0,
+                   pending_link_client_number = '',
+                   pending_link_contract_id = '',
+                   updated_at = ?
+               WHERE from_number = ?""",
+            (now, from_number),
+        )
+        self._conn.commit()
+
+    # --- Unlinked-ticket fallback (after failed verification) ---
+
+    def offer_unlinked_ticket(self, from_number: str):
+        """Ask the user yes/no whether they want to open an unlinked ticket."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET awaiting_unlinked_ticket_offer = 1,
+                   awaiting_unlinked_ticket_description = 0,
+                   updated_at = ?
+               WHERE from_number = ?""",
+            (now, from_number),
+        )
+        self._conn.commit()
+
+    def accept_unlinked_ticket(self, from_number: str):
+        """User said yes — wait for the ticket description."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET awaiting_unlinked_ticket_offer = 0,
+                   awaiting_unlinked_ticket_description = 1,
+                   updated_at = ?
+               WHERE from_number = ?""",
+            (now, from_number),
+        )
+        self._conn.commit()
+
+    def clear_unlinked_ticket_state(self, from_number: str):
+        """Clear unlinked-ticket flow state."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET awaiting_unlinked_ticket_offer = 0,
+                   awaiting_unlinked_ticket_description = 0,
+                   updated_at = ?
+               WHERE from_number = ?""",
+            (now, from_number),
+        )
+        self._conn.commit()
+
     def set_language(self, from_number: str, lang: str):
         """Store detected language preference for this session."""
         now = datetime.now(timezone.utc).isoformat()
@@ -327,6 +473,13 @@ class WhatsAppSessionStore:
                    awaiting_account_lookup = 0, awaiting_email_verification = 0,
                    pending_client_id = NULL, pending_client_name = '',
                    pending_client_email = '', manually_linked = 0,
+                   awaiting_link_client_number = 0,
+                   awaiting_link_contract_id = 0,
+                   awaiting_link_email = 0,
+                   pending_link_client_number = '',
+                   pending_link_contract_id = '',
+                   awaiting_unlinked_ticket_offer = 0,
+                   awaiting_unlinked_ticket_description = 0,
                    language = '',
                    updated_at = ?
                WHERE from_number = ?""",
@@ -336,6 +489,12 @@ class WhatsAppSessionStore:
         return WhatsAppSession(from_number, client_id, client_name, None, now, "", [], now, now)
 
     def _row_to_session(self, row: sqlite3.Row) -> WhatsAppSession:
+        def _col(name, default=None):
+            try:
+                return row[name]
+            except (IndexError, KeyError):
+                return default
+
         return WhatsAppSession(
             from_number=row["from_number"],
             client_id=row["client_id"],
@@ -357,4 +516,11 @@ class WhatsAppSessionStore:
             pending_client_email=row["pending_client_email"] or "",
             manually_linked=bool(row["manually_linked"]) if row["manually_linked"] is not None else False,
             language=row["language"] or "",
+            awaiting_link_client_number=bool(_col("awaiting_link_client_number") or 0),
+            awaiting_link_contract_id=bool(_col("awaiting_link_contract_id") or 0),
+            awaiting_link_email=bool(_col("awaiting_link_email") or 0),
+            pending_link_client_number=_col("pending_link_client_number") or "",
+            pending_link_contract_id=_col("pending_link_contract_id") or "",
+            awaiting_unlinked_ticket_offer=bool(_col("awaiting_unlinked_ticket_offer") or 0),
+            awaiting_unlinked_ticket_description=bool(_col("awaiting_unlinked_ticket_description") or 0),
         )

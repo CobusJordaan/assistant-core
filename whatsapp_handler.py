@@ -71,23 +71,57 @@ async def handle_whatsapp_message(
             session.language = lang
     logger.info("WA language: from=%s effective=%s", from_number, lang)
 
-    # 3a. Check if we're awaiting email verification (account security)
+    # 3a. Strict identity-link flow (for numbers not in clients or whatsapp_links)
+    if session.awaiting_link_client_number:
+        return await _handle_link_client_number(
+            session_store, session, from_number, body, lang
+        )
+    if session.awaiting_link_contract_id:
+        return await _handle_link_contract_id(
+            session_store, session, from_number, body, lang
+        )
+    if session.awaiting_link_email:
+        return await _handle_link_email(
+            session_store, session, from_number, body, profile_name, lang
+        )
+    if session.awaiting_unlinked_ticket_offer:
+        return await _handle_unlinked_ticket_offer(
+            session_store, session, from_number, body, lang
+        )
+    if session.awaiting_unlinked_ticket_description:
+        return await _handle_unlinked_ticket_description(
+            session_store, session, from_number, body, lang
+        )
+
+    # 3b. Check if we're awaiting email verification (account security)
     if session.awaiting_email_verification:
         return await _handle_email_verification(
             session_store, session, from_number, body, lang
         )
 
-    # 3b. Check if we're awaiting account number/name input
+    # 3c. Check if we're awaiting account number/name input
     if session.awaiting_account_lookup:
         return await _handle_account_lookup(
             session_store, session, from_number, body, lang
         )
 
-    # 3c. Check if we're awaiting a support ticket description
+    # 3d. Check if we're awaiting a support ticket description
     if session.awaiting_support_description:
         return await _handle_support_description(
             session_store, session, from_number, body, client_name, lang
         )
+
+    # 3e. Cold entry from an unlinked number → kick off the strict identity flow.
+    #     The Twilio webhook calls billing's phone matcher (which now checks
+    #     client_whatsapp_links first); if that returns no client, we land here
+    #     and ask for account number → contract ID → email to link the number.
+    if not client_id:
+        session_store.start_identity_link(from_number)
+        session_store.mark_greeted(from_number)
+        reply = t(lang, "link_intro")
+        logger.info("Identity-link flow started for unlinked number %s", from_number)
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
 
     # 4. Check for menu selection BEFORE intent classification
     menu_result = resolve_menu_selection(
@@ -448,5 +482,228 @@ async def _handle_email_verification(
     session_store.clear_account_lookup_state(from_number)
     reply = t(lang, "email_failed")
     logger.info("Email verification failed for %s", from_number)
+    session_store.update_after_reply(from_number, body, reply)
+    return reply
+
+
+# ---------------------------------------------------------------------------
+# Strict identity-link flow (unlinked WhatsApp numbers)
+#
+# Triggered when billing's phone matcher returns no client (no row in clients
+# AND no row in client_whatsapp_links). The user must supply client_number,
+# contract_id, and email — all three must match the same client row — before
+# we persist a link via the billing API. On failure we offer to open an
+# unlinked support ticket so staff can follow up manually.
+# ---------------------------------------------------------------------------
+
+_LINK_CANCEL_WORDS = {"menu", "cancel", "stop", "exit", "0"}
+_TICKET_YES_WORDS = {"yes", "y", "ja", "yep", "ok", "okay"}
+_TICKET_NO_WORDS = {"no", "n", "nee", "cancel", "stop"}
+
+
+def _trim_link_input(body: str) -> str:
+    return body.strip().strip("*").strip()
+
+
+async def _handle_link_client_number(
+    session_store: WhatsAppSessionStore,
+    session,
+    from_number: str,
+    body: str,
+    lang: str,
+) -> str:
+    """Step 1 of identity link: capture client_number, then ask for contract_id."""
+    value = _trim_link_input(body)
+
+    if value.lower() in _LINK_CANCEL_WORDS:
+        session_store.clear_link_state(from_number)
+        session_store.start_identity_link(from_number)
+        reply = t(lang, "link_intro")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    if not value:
+        reply = t(lang, "link_intro")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    session_store.advance_link_to_contract_id(from_number, value)
+    reply = t(lang, "link_ask_contract")
+    logger.info("Identity-link: %s submitted client_number=%s, awaiting contract_id",
+                from_number, value)
+    session_store.update_after_reply(from_number, body, reply)
+    return reply
+
+
+async def _handle_link_contract_id(
+    session_store: WhatsAppSessionStore,
+    session,
+    from_number: str,
+    body: str,
+    lang: str,
+) -> str:
+    """Step 2 of identity link: capture contract_id, then ask for email."""
+    value = _trim_link_input(body)
+
+    if value.lower() in _LINK_CANCEL_WORDS:
+        session_store.clear_link_state(from_number)
+        session_store.start_identity_link(from_number)
+        reply = t(lang, "link_intro")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    if not value:
+        reply = t(lang, "link_ask_contract")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    session_store.advance_link_to_email(from_number, value)
+    reply = t(lang, "link_ask_email")
+    logger.info("Identity-link: %s submitted contract_id=%s, awaiting email",
+                from_number, value)
+    session_store.update_after_reply(from_number, body, reply)
+    return reply
+
+
+async def _handle_link_email(
+    session_store: WhatsAppSessionStore,
+    session,
+    from_number: str,
+    body: str,
+    profile_name: str,
+    lang: str,
+) -> str:
+    """Step 3 of identity link: verify all three fields, then persist the link."""
+    email = _trim_link_input(body).lower()
+
+    if email in _LINK_CANCEL_WORDS:
+        session_store.clear_link_state(from_number)
+        session_store.start_identity_link(from_number)
+        reply = t(lang, "link_intro")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    client_number = session.pending_link_client_number or ""
+    contract_id = session.pending_link_contract_id or ""
+
+    if not email or "@" not in email:
+        reply = t(lang, "link_ask_email")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    try:
+        result = billing_client.verify_client_identity(client_number, contract_id, email)
+    except Exception as e:
+        logger.error("Identity verify error for %s: %s", from_number, e, exc_info=True)
+        session_store.clear_link_state(from_number)
+        session_store.offer_unlinked_ticket(from_number)
+        reply = t(lang, "lookup_error") + "\n\n" + t(lang, "link_offer_ticket")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    if result.get("matched"):
+        client = result.get("client") or {}
+        client_id = client.get("id")
+        c_name = client.get("fullname", "")
+        c_number = client.get("client_number", "")
+
+        # Persist the link so subsequent inbound messages auto-resolve to this client
+        try:
+            billing_client.link_whatsapp(client_id, from_number, profile_name=profile_name)
+        except Exception as e:
+            logger.error("link_whatsapp error for %s (client=%s): %s",
+                         from_number, client_id, e, exc_info=True)
+            # Continue anyway — confirm in session at least
+
+        session_store.confirm_identity_link(from_number, client_id, c_name)
+        first_name = c_name.split()[0] if c_name else "there"
+        verified_msg = t(lang, "link_success", name=first_name, number=c_number)
+        reply = verified_msg + render_main_menu(c_name, lang)
+        session_store.set_menu(from_number, "main_menu")
+        logger.info("Identity-link verified: %s -> client_id=%s (%s)",
+                    from_number, client_id, c_number)
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    # Verification failed — offer the support-ticket fallback
+    reason = result.get("reason", "")
+    if reason == "email_mismatch":
+        msg = t(lang, "link_failed_email")
+    else:
+        msg = t(lang, "link_failed_number")
+
+    session_store.clear_link_state(from_number)
+    session_store.offer_unlinked_ticket(from_number)
+    reply = f"{msg}\n\n{t(lang, 'link_offer_ticket')}"
+    logger.info("Identity-link failed for %s reason=%s", from_number, reason)
+    session_store.update_after_reply(from_number, body, reply)
+    return reply
+
+
+async def _handle_unlinked_ticket_offer(
+    session_store: WhatsAppSessionStore,
+    session,
+    from_number: str,
+    body: str,
+    lang: str,
+) -> str:
+    """User said yes/no to opening an unlinked support ticket."""
+    answer = _trim_link_input(body).lower()
+
+    if answer in _TICKET_YES_WORDS:
+        session_store.accept_unlinked_ticket(from_number)
+        reply = t(lang, "link_ticket_ask_description")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    if answer in _TICKET_NO_WORDS:
+        session_store.clear_unlinked_ticket_state(from_number)
+        reply = t(lang, "link_ticket_cancelled")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    # Anything else — re-prompt
+    reply = t(lang, "link_offer_ticket")
+    session_store.update_after_reply(from_number, body, reply)
+    return reply
+
+
+async def _handle_unlinked_ticket_description(
+    session_store: WhatsAppSessionStore,
+    session,
+    from_number: str,
+    body: str,
+    lang: str,
+) -> str:
+    """User provided the unlinked-ticket description — create the ticket."""
+    description = body.strip()
+    session_store.clear_unlinked_ticket_state(from_number)
+
+    if not description:
+        reply = t(lang, "link_ticket_ask_description")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    try:
+        result = billing_client.create_support_ticket(
+            client_id=None,
+            category="general",
+            subject="Unverified WhatsApp request",
+            message=description,
+            source="whatsapp",
+            source_phone=from_number,
+        )
+        if result.get("success"):
+            ticket_number = result.get("ticket_number", "")
+            reply = t(lang, "link_ticket_unlinked_created", ticket=ticket_number)
+            logger.info("Unlinked ticket %s created for %s", ticket_number, from_number)
+        else:
+            logger.error("Unlinked ticket creation failed for %s: %s",
+                         from_number, result.get("error"))
+            reply = t(lang, "support_ticket_failed")
+    except Exception as e:
+        logger.error("Unlinked ticket error for %s: %s", from_number, e, exc_info=True)
+        reply = t(lang, "support_ticket_error")
+
     session_store.update_after_reply(from_number, body, reply)
     return reply
