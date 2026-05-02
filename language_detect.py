@@ -53,6 +53,22 @@ _AF_WORDS = {
     "met", "vir", "van", "die", "dit", "dalk",
 }
 
+# English-specific words used by the strict detector to switch *away* from a
+# locked Afrikaans session. We deliberately keep this list to words that are
+# unambiguous (no Afrikaans homograph) so noisy mixed-language input doesn't
+# tip the balance.
+_EN_WORDS = {
+    "the", "and", "you", "are", "your", "with",
+    "what", "where", "when", "why",
+    "would", "could", "should", "thanks", "please", "going",
+    "want", "need", "send",
+    "this", "that", "these", "those", "will", "have", "has", "had",
+    "they", "them", "their", "there",
+    "from", "about",
+    "outstanding", "balance", "account", "invoice", "statement",
+    "payment", "due", "owe", "owing",
+}
+
 
 def detect_user_language(text: str) -> str:
     """Detect whether *text* is Afrikaans or English.
@@ -81,6 +97,40 @@ def detect_user_language(text: str) -> str:
         return "af"
 
     return "en"
+
+
+def detect_language_strict(text: str) -> str:
+    """Strict variant used to override a *locked* session language.
+
+    Returns ``"af"`` or ``"en"`` only when the message has clear,
+    multi-word evidence of that language. Returns ``""`` when the
+    signal is too weak (e.g. a single ambiguous word like "my") so
+    the caller keeps the existing locked preference instead of
+    flipping on noise.
+
+    Rules:
+      * Any STRONG_PHRASE match  → "af" (treat as deliberate switch)
+      * ≥ 3 unambiguous AF hits AND af_hits > en_hits → "af"
+      * ≥ 3 unambiguous EN hits AND en_hits > af_hits → "en"
+      * otherwise                                     → ""
+    """
+    lower = (text or "").lower().strip()
+    if not lower:
+        return ""
+
+    for phrase in _STRONG_PHRASES:
+        if phrase in lower:
+            return "af"
+
+    words = [w.strip(".,!?;:'\"()") for w in lower.split()]
+    af_hits = sum(1 for w in words if w in _AF_WORDS)
+    en_hits = sum(1 for w in words if w in _EN_WORDS)
+
+    if af_hits >= 3 and af_hits > en_hits:
+        return "af"
+    if en_hits >= 3 and en_hits > af_hits:
+        return "en"
+    return ""
 
 
 def get_system_prompt(lang: str) -> str:

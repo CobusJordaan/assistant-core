@@ -55,6 +55,10 @@ _MENU_COLUMNS = [
     ("connection_ticket_context", "TEXT DEFAULT ''"),
     # First-touch language choice (unlinked number, no preferred lang yet)
     ("awaiting_language_choice", "INTEGER DEFAULT 0"),
+    # When true, the session language was set explicitly (user choice or
+    # client's preferred_billing_language) and the auto-detector should NOT
+    # override it on subsequent messages.
+    ("language_locked", "INTEGER DEFAULT 0"),
 ]
 
 
@@ -73,7 +77,7 @@ class WhatsAppSession:
         "pending_link_client_number", "pending_link_contract_id",
         "awaiting_unlinked_ticket_offer", "awaiting_unlinked_ticket_description",
         "awaiting_connection_ticket_offer", "connection_ticket_context",
-        "awaiting_language_choice",
+        "awaiting_language_choice", "language_locked",
         "created_at", "updated_at",
     )
 
@@ -99,7 +103,8 @@ class WhatsAppSession:
                  awaiting_unlinked_ticket_description: bool = False,
                  awaiting_connection_ticket_offer: bool = False,
                  connection_ticket_context: str = "",
-                 awaiting_language_choice: bool = False):
+                 awaiting_language_choice: bool = False,
+                 language_locked: bool = False):
         self.from_number = from_number
         self.client_id = client_id
         self.client_name = client_name
@@ -128,6 +133,7 @@ class WhatsAppSession:
         self.awaiting_connection_ticket_offer = awaiting_connection_ticket_offer
         self.connection_ticket_context = connection_ticket_context
         self.awaiting_language_choice = awaiting_language_choice
+        self.language_locked = language_locked
         self.created_at = created_at
         self.updated_at = updated_at
 
@@ -201,6 +207,7 @@ class WhatsAppSessionStore:
                         """UPDATE whatsapp_sessions
                            SET client_id = NULL, client_name = '',
                                manually_linked = 0, language = '',
+                               language_locked = 0,
                                updated_at = ?
                            WHERE from_number = ?""",
                         (now, from_number),
@@ -211,6 +218,7 @@ class WhatsAppSessionStore:
                     session.client_name = ""
                     session.manually_linked = False
                     session.language = ""
+                    session.language_locked = False
                 else:
                     self._conn.execute(
                         "UPDATE whatsapp_sessions SET client_id = ?, client_name = ?, updated_at = ? WHERE from_number = ?",
@@ -521,10 +529,32 @@ class WhatsAppSessionStore:
         self._conn.commit()
 
     def set_language(self, from_number: str, lang: str):
-        """Store detected language preference for this session."""
+        """Store an *auto-detected* language preference for this session.
+
+        Does NOT set `language_locked` — auto-detection can be overridden by
+        a later explicit choice or by a future detection on a clearer
+        message. Use `lock_language` for explicit / authoritative settings.
+        """
         now = datetime.now(timezone.utc).isoformat()
         self._conn.execute(
             "UPDATE whatsapp_sessions SET language = ?, updated_at = ? WHERE from_number = ?",
+            (lang, now, from_number),
+        )
+        self._conn.commit()
+
+    def lock_language(self, from_number: str, lang: str):
+        """Store an *explicit* language preference and pin it.
+
+        Used after the user picks a language from the choice menu, or after
+        a successful identity link applies the client's preferred_billing_language.
+        Once locked, the auto-detector won't override the value on future
+        messages — only a session reset or link revocation clears the lock.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET language = ?, language_locked = 1, updated_at = ?
+               WHERE from_number = ?""",
             (lang, now, from_number),
         )
         self._conn.commit()
@@ -587,6 +617,7 @@ class WhatsAppSessionStore:
                    connection_ticket_context = '',
                    awaiting_language_choice = 0,
                    language = '',
+                   language_locked = 0,
                    updated_at = ?
                WHERE from_number = ?""",
             (client_id, client_name, now, now, from_number),
@@ -632,4 +663,5 @@ class WhatsAppSessionStore:
             awaiting_connection_ticket_offer=bool(_col("awaiting_connection_ticket_offer") or 0),
             connection_ticket_context=_col("connection_ticket_context") or "",
             awaiting_language_choice=bool(_col("awaiting_language_choice") or 0),
+            language_locked=bool(_col("language_locked") or 0),
         )

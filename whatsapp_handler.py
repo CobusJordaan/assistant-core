@@ -18,7 +18,7 @@ from whatsapp_menu import (
     SUPPORT_CATEGORIES,
 )
 from whatsapp_i18n import t
-from language_detect import detect_user_language
+from language_detect import detect_user_language, detect_language_strict
 
 logger = logging.getLogger("assistant-core.wa-handler")
 
@@ -200,28 +200,45 @@ async def handle_whatsapp_message(
     session = session_store.get_or_create(from_number, client_id, client_name)
 
     # 2a. Apply the client's preferred billing language as the session default
-    #     when the session has no language set yet. Detection on a long message
-    #     can still override it below, so the user can naturally switch by
-    #     writing in another language.
+    #     when the session has no language set yet. We *lock* it because it
+    #     reflects an explicit account-level preference — a noisy detection
+    #     on one short message shouldn't flip the customer back to English.
     if client_pref_lang and not session.language:
-        session_store.set_language(from_number, client_pref_lang)
+        session_store.lock_language(from_number, client_pref_lang)
         session.language = client_pref_lang
-        logger.info("WA lang prefilled from preferred_billing_language: %s -> %s",
+        session.language_locked = True
+        logger.info("WA lang locked from preferred_billing_language: %s -> %s",
                     from_number, client_pref_lang)
 
-    # 2b. Detect language — current message wins, session is fallback
-    #     Short numeric/single-word inputs (menu replies) can't be detected
-    #     reliably, so keep the session language for those.
+    # 2b. Choose the effective language for this turn.
+    #     - Short numeric/single-word inputs (menu replies) can't be detected
+    #       reliably, so keep the session language for those.
+    #     - When the language has been *locked* (explicit user choice or
+    #       client preference), only a strict / high-evidence detection of
+    #       the OTHER language can flip it. This stops noisy single-word
+    #       hits ("my", "is") from flipping a customer back to English.
+    #     - Otherwise the regular auto-detector decides.
     stripped = body.strip()
     if stripped.isdigit() or len(stripped.split()) <= 1:
         lang = session.language or "en"
+    elif session.language_locked and session.language:
+        strict = detect_language_strict(body)
+        if strict and strict != session.language:
+            session_store.lock_language(from_number, strict)
+            session.language = strict
+            lang = strict
+            logger.info("WA language switch (strict, locked): -> %s for %s",
+                        strict, from_number)
+        else:
+            lang = session.language
     else:
         detected_lang = detect_user_language(body)
         lang = _get_lang(session, detected_lang)
         if lang != session.language:
             session_store.set_language(from_number, lang)
             session.language = lang
-    logger.info("WA language: from=%s effective=%s", from_number, lang)
+    logger.info("WA language: from=%s effective=%s locked=%s",
+                from_number, lang, session.language_locked)
 
     # 3a-pre. First-touch language choice (before any link prompt)
     if session.awaiting_language_choice:
@@ -753,12 +770,13 @@ async def _handle_language_choice(
         session_store.update_after_reply(from_number, body, reply)
         return reply
 
-    session_store.set_language(from_number, chosen)
+    session_store.lock_language(from_number, chosen)
     session.language = chosen
+    session.language_locked = True
     session_store.clear_language_choice(from_number)
     session_store.start_identity_link(from_number)
     reply = t(chosen, "link_intro")
-    logger.info("Language chosen for %s: %s — proceeding to link_intro",
+    logger.info("Language chosen and locked for %s: %s — proceeding to link_intro",
                 from_number, chosen)
     session_store.update_after_reply(from_number, body, reply)
     return reply
@@ -948,14 +966,17 @@ async def _handle_link_email(
         session_store.confirm_identity_link(from_number, client_id, c_name)
 
         # Honour the client's preferred billing language for the success
-        # reply (and persist it so subsequent messages stay in that language).
+        # reply, and *lock* it so subsequent messages stay in that language
+        # even if the auto-detector misreads a noisy sentence.
         pref = (client.get("preferred_billing_language") or "").strip().lower()
-        if pref in ("en", "af") and pref != lang:
-            session_store.set_language(from_number, pref)
+        if pref in ("en", "af"):
+            session_store.lock_language(from_number, pref)
             session.language = pref
-            logger.info("Identity-link: language switched to %s for %s (client preference)",
-                        pref, from_number)
-            lang = pref
+            session.language_locked = True
+            if pref != lang:
+                logger.info("Identity-link: language locked to %s for %s (client preference)",
+                            pref, from_number)
+                lang = pref
 
         first_name = c_name.split()[0] if c_name else "there"
         verified_msg = t(lang, "link_success", name=first_name, number=c_number)
