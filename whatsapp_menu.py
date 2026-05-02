@@ -26,6 +26,7 @@ MAIN_MENU = {
         "3": {"label": "Invoice or statement", "action": "_document_menu"},
         "4": {"label": "Support", "action": "_support_menu"},
         "5": {"label": "Connection check", "action": "connection_check"},
+        "6": {"label": "New connection / extra service", "action": "_new_connection"},
     },
 }
 
@@ -68,7 +69,7 @@ _MENU_REGISTRY = {
 _MENU_LABEL_KEYS = {
     "main_menu": {
         "1": "main_menu_1", "2": "main_menu_2", "3": "main_menu_3",
-        "4": "main_menu_4", "5": "main_menu_5",
+        "4": "main_menu_4", "5": "main_menu_5", "6": "main_menu_6",
     },
     "document_menu": {
         "1": "document_menu_1", "2": "document_menu_2",

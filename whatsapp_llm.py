@@ -36,6 +36,7 @@ Intents:
 - "support_ticket" — the customer wants something a human staff member must action: change of bank/payment/contact details, dispute a charge, request a callback, report a fault, escalate a complaint, ask for an arrangement, anything that says "open a ticket" / "log a ticket" / "I need help with X". Provide:
     "category": "billing" (money/account/contract/debit order/bank), or "connectivity" (internet/wifi/speed/outage/router), or "general"
     "subject":  4-8 word summary of what they want (in English regardless of message language; staff inbox is English)
+- "new_connection" — the person is a *prospect* asking about getting a NEW Draadloze line, signing up, package availability, or upgrading to an additional service. Triggers like "I want to sign up", "interested in a new connection", "ek wil aansluit", "do you cover my area", "kan julle by my installeer", "I want to add a second line / extra package".
 - "balance"        — asking what they owe / their account balance
 - "invoices"       — asking which invoices are unpaid / overdue / outstanding
 - "invoice_pdf"    — wants their invoice sent / emailed / a PDF / a copy / a link. If the customer specifies a particular invoice (e.g. "send me invoice 233372", "kan jy faktuur HRS-2602-0030 stuur") set "invoice_number" to the exact code or numeric id they typed (no extra words). Omit "invoice_number" if no invoice is named.
@@ -54,6 +55,7 @@ Return ONLY this JSON shape, with only the relevant keys:
 
 VALID_INTENTS = frozenset({
     "support_ticket",
+    "new_connection",
     "balance",
     "invoices",
     "invoice_pdf",

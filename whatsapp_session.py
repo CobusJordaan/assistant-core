@@ -59,6 +59,13 @@ _MENU_COLUMNS = [
     # client's preferred_billing_language) and the auto-detector should NOT
     # override it on subsequent messages.
     ("language_locked", "INTEGER DEFAULT 0"),
+    # New-connection flow (sales lead capture from main menu item 6 or
+    # from a website-driven WhatsApp deep link)
+    ("awaiting_new_connection_details", "INTEGER DEFAULT 0"),
+    # First inbound message stashed at cold-entry time, peeked at after the
+    # user picks a language so a "new connection" intent in their first
+    # message bypasses the link-flow and goes to the new-connection flow.
+    ("pending_first_message", "TEXT DEFAULT ''"),
 ]
 
 
@@ -78,6 +85,7 @@ class WhatsAppSession:
         "awaiting_unlinked_ticket_offer", "awaiting_unlinked_ticket_description",
         "awaiting_connection_ticket_offer", "connection_ticket_context",
         "awaiting_language_choice", "language_locked",
+        "awaiting_new_connection_details", "pending_first_message",
         "created_at", "updated_at",
     )
 
@@ -104,7 +112,9 @@ class WhatsAppSession:
                  awaiting_connection_ticket_offer: bool = False,
                  connection_ticket_context: str = "",
                  awaiting_language_choice: bool = False,
-                 language_locked: bool = False):
+                 language_locked: bool = False,
+                 awaiting_new_connection_details: bool = False,
+                 pending_first_message: str = ""):
         self.from_number = from_number
         self.client_id = client_id
         self.client_name = client_name
@@ -134,6 +144,8 @@ class WhatsAppSession:
         self.connection_ticket_context = connection_ticket_context
         self.awaiting_language_choice = awaiting_language_choice
         self.language_locked = language_locked
+        self.awaiting_new_connection_details = awaiting_new_connection_details
+        self.pending_first_message = pending_first_message
         self.created_at = created_at
         self.updated_at = updated_at
 
@@ -515,6 +527,62 @@ class WhatsAppSessionStore:
         )
         self._conn.commit()
 
+    # --- New-connection (sales lead) flow ---
+
+    def stash_first_message(self, from_number: str, body: str):
+        """Save the very first inbound message so the post-language-choice
+        step can peek at it (e.g. detect a 'new connection' intent in the
+        text the visitor came in with from the website)."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET pending_first_message = ?, updated_at = ?
+               WHERE from_number = ?""",
+            (body or "", now, from_number),
+        )
+        self._conn.commit()
+
+    def consume_first_message(self, from_number: str) -> str:
+        """Return and clear the stashed first message in one shot."""
+        row = self._conn.execute(
+            "SELECT pending_first_message FROM whatsapp_sessions WHERE from_number = ?",
+            (from_number,),
+        ).fetchone()
+        text = (row["pending_first_message"] if row else "") or ""
+        if text:
+            now = datetime.now(timezone.utc).isoformat()
+            self._conn.execute(
+                """UPDATE whatsapp_sessions
+                   SET pending_first_message = '', updated_at = ?
+                   WHERE from_number = ?""",
+                (now, from_number),
+            )
+            self._conn.commit()
+        return text
+
+    def set_awaiting_new_connection(self, from_number: str):
+        """Flag that we're waiting for the customer's name + area before
+        creating the sales-lead ticket."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET awaiting_new_connection_details = 1, updated_at = ?
+               WHERE from_number = ?""",
+            (now, from_number),
+        )
+        self._conn.commit()
+
+    def clear_new_connection_state(self, from_number: str):
+        """Clear the new-connection waiting flag once a ticket has been logged."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET awaiting_new_connection_details = 0, updated_at = ?
+               WHERE from_number = ?""",
+            (now, from_number),
+        )
+        self._conn.commit()
+
     def clear_connection_ticket_state(self, from_number: str):
         """Clear connection-ticket offer state and stored context."""
         now = datetime.now(timezone.utc).isoformat()
@@ -618,6 +686,8 @@ class WhatsAppSessionStore:
                    awaiting_language_choice = 0,
                    language = '',
                    language_locked = 0,
+                   awaiting_new_connection_details = 0,
+                   pending_first_message = '',
                    updated_at = ?
                WHERE from_number = ?""",
             (client_id, client_name, now, now, from_number),
@@ -664,4 +734,6 @@ class WhatsAppSessionStore:
             connection_ticket_context=_col("connection_ticket_context") or "",
             awaiting_language_choice=bool(_col("awaiting_language_choice") or 0),
             language_locked=bool(_col("language_locked") or 0),
+            awaiting_new_connection_details=bool(_col("awaiting_new_connection_details") or 0),
+            pending_first_message=_col("pending_first_message") or "",
         )

@@ -86,6 +86,12 @@ async def _route_llm_intent(
     """
     intent = llm_result.get("intent", "unclear")
 
+    # ---- New connection (sales lead) ----
+    if intent == "new_connection":
+        return await _start_new_connection_flow(
+            session_store, session, from_number, body, lang, body,
+        )
+
     # ---- Support ticket auto-creation ----
     if intent == "support_ticket":
         category = llm_result.get("category", "general")
@@ -276,6 +282,10 @@ async def handle_whatsapp_message(
         return await _handle_connection_ticket_offer(
             session_store, session, from_number, body, client_name, lang
         )
+    if session.awaiting_new_connection_details:
+        return await _handle_new_connection_details(
+            session_store, session, from_number, body, lang
+        )
 
     # 3b. Check if we're awaiting email verification (account security)
     if session.awaiting_email_verification:
@@ -303,13 +313,21 @@ async def handle_whatsapp_message(
     #     then the link prompt is shown in their chosen language.
     if not client_id:
         if not session.language:
+            # Stash the customer's very first message — visitors arriving
+            # via the website "WhatsApp Us" deep link land here with text
+            # like "Hi, I'm interested in a new Draadloze connection". After
+            # they pick a language we'll inspect the stashed message and
+            # either route them into the new-connection flow or fall back
+            # to the link-flow.
             session_store.set_awaiting_language_choice(from_number)
             session_store.mark_greeted(from_number)
+            session_store.stash_first_message(from_number, body)
             reply = t("en", "language_choice_prompt")
             logger.info("Language choice requested for unlinked number %s", from_number)
             session_store.update_after_reply(from_number, body, reply)
             return reply
 
+        # Language already known — fall straight to the link flow as before.
         session_store.start_identity_link(from_number)
         session_store.mark_greeted(from_number)
         reply = t(lang, "link_intro")
@@ -463,6 +481,13 @@ async def _handle_menu_selection(
                      from_number, body.strip())
         session_store.update_after_reply(from_number, body, reply)
         return reply
+
+    # New-connection / sales-lead flow (main menu item 6)
+    if action == "_new_connection":
+        session_store.clear_menu(from_number)
+        return await _start_new_connection_flow(
+            session_store, session, from_number, body, lang,
+        )
 
     # Support category selected → ask for description (or link account first)
     if action in SUPPORT_CATEGORIES:
@@ -753,6 +778,32 @@ def _looks_like_account_ref(value: str) -> bool:
 _LANG_CHOICE_EN = {"1", "en", "eng", "english", "engels"}
 _LANG_CHOICE_AF = {"2", "af", "afr", "afrikaans"}
 
+# Cheap keyword pass for "I want a new connection" intent — runs before
+# the LLM call so obvious cases (e.g. the website deep link's pre-filled
+# text) skip the latency budget entirely.
+_NEW_CONNECTION_KEYWORDS = (
+    "new connection", "new draadloze connection", "new line",
+    "interested in a new", "interested in joining", "want to sign up",
+    "want a new", "would like a new", "do you cover",
+    "install internet", "install fibre", "install fiber",
+    "extra service", "extra package", "additional package",
+    "second line", "another line",
+    "nuwe konneksie", "nuwe verbinding", "nuwe lyn", "nuwe diens",
+    "ek wil aansluit", "wil aansluit", "graag aansluit",
+    "ekstra pakket", "ekstra diens", "tweede lyn",
+    "kan julle by my installeer", "kan julle installeer",
+)
+
+
+def _looks_like_new_connection(text: str) -> bool:
+    """Cheap keyword check — returns True if the text obviously contains a
+    new-connection signal. Used to short-circuit the LLM call for the
+    common website-deep-link path."""
+    if not text:
+        return False
+    lower = text.lower()
+    return any(kw in lower for kw in _NEW_CONNECTION_KEYWORDS)
+
 
 async def _handle_language_choice(
     session_store: WhatsAppSessionStore,
@@ -779,10 +830,122 @@ async def _handle_language_choice(
     session.language = chosen
     session.language_locked = True
     session_store.clear_language_choice(from_number)
+
+    # Peek at the stashed first inbound. If it signals a new-connection
+    # intent (cheap keyword pass first, then LLM if it's a sentence) we
+    # bypass the link prompt — a brand-new customer doesn't have an
+    # account number to give us anyway.
+    first_msg = session_store.consume_first_message(from_number)
+    if first_msg:
+        if _looks_like_new_connection(first_msg):
+            logger.info("Language chosen for %s: %s — first message reads as new-connection intent",
+                        from_number, chosen)
+            return await _start_new_connection_flow(
+                session_store, session, from_number, body, chosen, first_msg,
+            )
+        if len(first_msg.split()) >= 4:
+            try:
+                llm = await classify_with_llm(first_msg, None, chosen)
+            except Exception as e:
+                logger.warning("LLM classify on stashed first msg failed: %s", e)
+                llm = {"intent": "unclear"}
+            if llm.get("intent") == "new_connection":
+                logger.info("Language chosen for %s: %s — LLM tagged first message as new_connection",
+                            from_number, chosen)
+                return await _start_new_connection_flow(
+                    session_store, session, from_number, body, chosen, first_msg,
+                )
+
     session_store.start_identity_link(from_number)
     reply = t(chosen, "link_intro")
     logger.info("Language chosen and locked for %s: %s — proceeding to link_intro",
                 from_number, chosen)
+    session_store.update_after_reply(from_number, body, reply)
+    return reply
+
+
+async def _start_new_connection_flow(
+    session_store: WhatsAppSessionStore,
+    session,
+    from_number: str,
+    body: str,
+    lang: str,
+    original_first_message: str = "",
+) -> str:
+    """Enter the new-connection (sales-lead) flow.
+
+    Asks the prospect for their name + area in one message. The supplied
+    `original_first_message` (if any) is re-stashed so we can include it
+    as context when we eventually log the sales ticket.
+    """
+    session_store.set_awaiting_new_connection(from_number)
+    if original_first_message:
+        session_store.stash_first_message(from_number, original_first_message)
+    reply = t(lang, "new_connection_intro")
+    logger.info("New-connection flow started for %s (lang=%s, has_context=%s)",
+                from_number, lang, bool(original_first_message))
+    session_store.update_after_reply(from_number, body, reply)
+    return reply
+
+
+async def _handle_new_connection_details(
+    session_store: WhatsAppSessionStore,
+    session,
+    from_number: str,
+    body: str,
+    lang: str,
+) -> str:
+    """The customer/prospect just sent their name + area. Log the sales lead
+    via the billing API (as an unlinked ticket when they're not a customer
+    yet) and confirm with the ticket number."""
+    details = body.strip()
+
+    # Bare-minimum: we want at least two words (e.g. a name + town)
+    if len(details.split()) < 2 or len(details) < 6:
+        reply = t(lang, "new_connection_too_short")
+        session_store.update_after_reply(from_number, body, reply)
+        return reply
+
+    session_store.clear_new_connection_state(from_number)
+
+    original_msg = session_store.consume_first_message(from_number)
+    description_lines = [
+        "New-connection enquiry submitted via WhatsApp.",
+        f"Customer reply: {details}",
+    ]
+    if original_msg and original_msg.strip().lower() != details.lower():
+        description_lines.append(f"Original enquiry: {original_msg}")
+    description = "\n".join(description_lines)
+
+    try:
+        ticket = billing_client.create_support_ticket(
+            client_id=session.client_id,  # may be None for prospects
+            category="general",
+            subject="New connection enquiry (sales)",
+            message=description,
+            source="whatsapp",
+            source_phone=from_number,
+        )
+        if ticket.get("success"):
+            ticket_number = ticket.get("ticket_number", "")
+            base = t(lang, "new_connection_logged", ticket=ticket_number)
+            if session.client_id:
+                # Existing customer triggered this from menu 6 — show menu again
+                reply = _append_followup_menu(base, lang)
+                session_store.set_menu(from_number, "main_menu")
+            else:
+                reply = base
+            logger.info("New-connection ticket %s logged for %s (linked=%s)",
+                        ticket_number, from_number, bool(session.client_id))
+            session_store.update_after_reply(from_number, body, reply)
+            return reply
+        logger.warning("New-connection ticket failed for %s: %s",
+                       from_number, ticket.get("error"))
+    except Exception as e:
+        logger.error("New-connection ticket error for %s: %s",
+                     from_number, e, exc_info=True)
+
+    reply = t(lang, "new_connection_failed")
     session_store.update_after_reply(from_number, body, reply)
     return reply
 

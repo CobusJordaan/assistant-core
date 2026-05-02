@@ -30,6 +30,10 @@ _STRINGS = {
         "en": "Connection check",
         "af": "Konneksietoets",
     },
+    "main_menu_6": {
+        "en": "New connection / extra service",
+        "af": "Nuwe konneksie / ekstra diens",
+    },
 
     # --- Document sub-menu ---
     "document_menu_preamble": {
@@ -189,6 +193,24 @@ _STRINGS = {
     "ai_ticket_created": {
         "en": "Got it — I've logged support ticket *#{ticket}* for you:\n_“{subject}”_\n\nOur team will follow up on this WhatsApp number shortly.",
         "af": "Reg so — ek het ondersteuningskaartjie *#{ticket}* vir jou aangeteken:\n_“{subject}”_\n\nOns span sal binnekort op hierdie WhatsApp-nommer opvolg.",
+    },
+
+    # --- New-connection / sales-lead flow ---
+    "new_connection_intro": {
+        "en": "Great — let's get you connected! 📡\n\nPlease send us your *full name*, the *town/area* where you need the connection, and any package preference (e.g. fibre 50/25). One message is fine.",
+        "af": "Wonderlik — kom ons kry jou gekoppel! 📡\n\nStuur asseblief jou *volle naam*, die *dorp/area* waar jy die konneksie nodig het, en enige pakketvoorkeur (bv. fibre 50/25). Een boodskap is reg.",
+    },
+    "new_connection_too_short": {
+        "en": "I just need a bit more detail — please send your *full name* and the *town/area* in one message so our sales team can call you back.",
+        "af": "Ek het net 'n bietjie meer inligting nodig — stuur asseblief jou *volle naam* en die *dorp/area* in een boodskap sodat ons verkoopspan jou kan terugbel.",
+    },
+    "new_connection_logged": {
+        "en": "Thanks! ✅ I've logged sales lead *#{ticket}* for our team.\nThey'll reach out on this WhatsApp number within 1 business day.",
+        "af": "Dankie! ✅ Ek het verkoopslead *#{ticket}* vir ons span aangeteken.\nHulle sal binne 1 werksdag op hierdie WhatsApp-nommer kontak maak.",
+    },
+    "new_connection_failed": {
+        "en": "I'm sorry, I couldn't log your enquiry right now. Please try again, or call our Harrismith team directly.",
+        "af": "Jammer, ek kon nie nou jou navraag aanteken nie. Probeer asseblief weer, of bel ons Harrismith-span direk.",
     },
     "support_ticket_failed": {
         "en": "I'm sorry, I couldn't create the ticket right now. Please try again in a moment, or contact us directly for support.",
