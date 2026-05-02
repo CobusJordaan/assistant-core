@@ -91,9 +91,26 @@ async def handle_whatsapp_message(
     # 1. Resolve client info from billing payload
     client_id = client.get("id") if client else None
     client_name = client.get("fullname", "") if client else ""
+    client_pref_lang = ""
+    if client:
+        raw_pref = client.get("preferred_billing_language") or ""
+        if isinstance(raw_pref, str):
+            raw_pref = raw_pref.strip().lower()
+            if raw_pref in ("en", "af"):
+                client_pref_lang = raw_pref
 
     # 2. Load or create session (auto-resets after 30 min inactivity)
     session = session_store.get_or_create(from_number, client_id, client_name)
+
+    # 2a. Apply the client's preferred billing language as the session default
+    #     when the session has no language set yet. Detection on a long message
+    #     can still override it below, so the user can naturally switch by
+    #     writing in another language.
+    if client_pref_lang and not session.language:
+        session_store.set_language(from_number, client_pref_lang)
+        session.language = client_pref_lang
+        logger.info("WA lang prefilled from preferred_billing_language: %s -> %s",
+                    from_number, client_pref_lang)
 
     # 2b. Detect language — current message wins, session is fallback
     #     Short numeric/single-word inputs (menu replies) can't be detected
@@ -658,6 +675,17 @@ async def _handle_link_email(
             # Continue anyway — confirm in session at least
 
         session_store.confirm_identity_link(from_number, client_id, c_name)
+
+        # Honour the client's preferred billing language for the success
+        # reply (and persist it so subsequent messages stay in that language).
+        pref = (client.get("preferred_billing_language") or "").strip().lower()
+        if pref in ("en", "af") and pref != lang:
+            session_store.set_language(from_number, pref)
+            session.language = pref
+            logger.info("Identity-link: language switched to %s for %s (client preference)",
+                        pref, from_number)
+            lang = pref
+
         first_name = c_name.split()[0] if c_name else "there"
         verified_msg = t(lang, "link_success", name=first_name, number=c_number)
         reply = verified_msg + render_main_menu(c_name, lang)
