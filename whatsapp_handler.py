@@ -703,11 +703,16 @@ def _trim_link_input(body: str) -> str:
 
 def _looks_like_account_ref(value: str) -> bool:
     """Cheap sanity check before treating a message as a client_number /
-    contract_id. Filters bare greetings, single-digit menu replies, and
-    too-short noise so the user gets re-prompted instead of being marched
-    straight to the email step with garbage."""
+    contract_id. Filters greetings, single-digit menu replies, multi-word
+    sentences ("ek wil my internet skuif" — clearly a support request, not
+    an ID), and too-short noise so the user gets re-prompted (or LLM-routed
+    to a ticket) instead of being marched straight to the email step."""
     v = (value or "").strip()
     if not v:
+        return False
+    # Account refs in this CRM are a single alphanumeric token (DRA0011 /
+    # SDA000). Any whitespace = sentence, never an ID.
+    if any(c.isspace() for c in v):
         return False
     # Single digit / very short numeric — probably a menu reply, not an ID
     if v.isdigit() and len(v) < 4:
@@ -715,7 +720,7 @@ def _looks_like_account_ref(value: str) -> bool:
     # Greeting / generic acknowledgement
     if v.lower() in _ACCOUNT_REF_NOISE_WORDS:
         return False
-    # Real account refs in this CRM are at least 3 alphanumeric chars
+    # Real account refs are at least 3 alphanumeric chars
     if len(v) < 3:
         return False
     if not any(c.isalnum() for c in v):
