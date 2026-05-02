@@ -135,20 +135,24 @@ class BillingClient:
         resp.raise_for_status()
         return resp.json()
 
-    def verify_client_identity(self, client_number: str, contract_id: str, email: str) -> dict:
-        """Strict identity check used by the WhatsApp linking flow.
+    def verify_client_identity(self, client_number: str, email: str,
+                                contract_id: str = "") -> dict:
+        """Identity check used by the WhatsApp linking flow.
 
-        All three values must resolve to the same client row. Returns the
-        billing API's JSON; matched=false replies include a reason code.
+        `client_number` is the user-supplied account reference and is matched
+        against EITHER `clients.client_number` OR `clients.contract_id`.
+        `email` must match the row's `email` column. If `contract_id` is also
+        supplied (legacy mid-flight sessions), both ID columns must align —
+        the billing endpoint preserves that strict mode for back-compat.
+        Returns the API JSON; matched=false replies include a reason code.
         """
         self._check_configured()
+        payload = {"client_number": client_number, "email": email}
+        if contract_id:
+            payload["contract_id"] = contract_id
         resp = httpx.post(
             f"{self.base_url}/api/assistant/verify-client-identity",
-            json={
-                "client_number": client_number,
-                "contract_id": contract_id,
-                "email": email,
-            },
+            json=payload,
             headers=self._headers(),
             timeout=self.timeout,
         )

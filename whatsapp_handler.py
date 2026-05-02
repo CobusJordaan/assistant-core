@@ -550,7 +550,9 @@ async def _handle_link_client_number(
     body: str,
     lang: str,
 ) -> str:
-    """Step 1 of identity link: capture client_number, then ask for contract_id."""
+    """Step 1 of identity link: capture an account reference (matched against
+    EITHER `client_number` OR `contract_id`), then jump straight to email
+    verification — no separate contract_id prompt."""
     value = _trim_link_input(body)
 
     if value.lower() in _LINK_CANCEL_WORDS:
@@ -565,9 +567,9 @@ async def _handle_link_client_number(
         session_store.update_after_reply(from_number, body, reply)
         return reply
 
-    session_store.advance_link_to_contract_id(from_number, value)
-    reply = t(lang, "link_ask_contract")
-    logger.info("Identity-link: %s submitted client_number=%s, awaiting contract_id",
+    session_store.advance_account_ref_to_email(from_number, value)
+    reply = t(lang, "link_ask_email")
+    logger.info("Identity-link: %s submitted account_ref=%s, awaiting email",
                 from_number, value)
     session_store.update_after_reply(from_number, body, reply)
     return reply
@@ -621,8 +623,8 @@ async def _handle_link_email(
         session_store.update_after_reply(from_number, body, reply)
         return reply
 
-    client_number = session.pending_link_client_number or ""
-    contract_id = session.pending_link_contract_id or ""
+    account_ref = session.pending_link_client_number or ""
+    contract_id = session.pending_link_contract_id or ""  # legacy mid-flight sessions
 
     if not email or "@" not in email:
         reply = t(lang, "link_ask_email")
@@ -630,7 +632,9 @@ async def _handle_link_email(
         return reply
 
     try:
-        result = billing_client.verify_client_identity(client_number, contract_id, email)
+        result = billing_client.verify_client_identity(
+            client_number=account_ref, email=email, contract_id=contract_id,
+        )
     except Exception as e:
         logger.error("Identity verify error for %s: %s", from_number, e, exc_info=True)
         session_store.clear_link_state(from_number)

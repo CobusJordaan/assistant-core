@@ -351,6 +351,24 @@ class WhatsAppSessionStore:
         )
         self._conn.commit()
 
+    def advance_account_ref_to_email(self, from_number: str, account_ref: str):
+        """Stash the account reference (matched against client_number OR
+        contract_id) and ask for the email next. Used by the simplified
+        2-step link flow."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """UPDATE whatsapp_sessions
+               SET awaiting_link_client_number = 0,
+                   awaiting_link_contract_id = 0,
+                   awaiting_link_email = 1,
+                   pending_link_client_number = ?,
+                   pending_link_contract_id = '',
+                   updated_at = ?
+               WHERE from_number = ?""",
+            (account_ref, now, from_number),
+        )
+        self._conn.commit()
+
     def confirm_identity_link(self, from_number: str, client_id: int, client_name: str):
         """Verification succeeded — promote client and clear the link state."""
         now = datetime.now(timezone.utc).isoformat()

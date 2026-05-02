@@ -247,8 +247,8 @@ _STRINGS = {
 
     # --- Strict identity-link flow (number not linked) ---
     "link_intro": {
-        "en": "Hi \U0001f44b This WhatsApp number isn't linked to an account on our system yet.\n\nTo link it, please send your *account number* (e.g. ACC123).",
-        "af": "Hallo \U0001f44b Hierdie WhatsApp-nommer is nog nie aan 'n rekening op ons stelsel gekoppel nie.\n\nOm dit te koppel, stuur asseblief jou *rekeningnommer* (bv. ACC123).",
+        "en": "Hi \U0001f44b This WhatsApp number isn't linked to an account on our system yet.\n\nTo link it, please send your *account number* or *contract ID*.",
+        "af": "Hallo \U0001f44b Hierdie WhatsApp-nommer is nog nie aan 'n rekening op ons stelsel gekoppel nie.\n\nOm dit te koppel, stuur asseblief jou *rekeningnommer* of *kontrak-ID*.",
     },
     "link_ask_contract": {
         "en": "Thanks. Now please send your *contract ID* for the same account.",
